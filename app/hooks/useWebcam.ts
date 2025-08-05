@@ -53,12 +53,16 @@ export function useWebcam(): UseWebcamReturn {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
 
-      // Ensure video plays
+      // Ensure video plays with proper promise handling
       const playVideo = async () => {
         try {
-          await videoRef.current?.play();
+          const playPromise = videoRef.current?.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+          }
         } catch (err) {
           console.warn('Video autoplay failed:', err);
+          // Don't reset permission on autoplay failure
         }
       };
 
@@ -67,6 +71,7 @@ export function useWebcam(): UseWebcamReturn {
   }, [stream]);
 
   const stopStream = () => {
+    console.log('Stopping stream - called from:', new Error().stack);
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       setStream(null);

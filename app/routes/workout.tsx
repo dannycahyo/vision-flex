@@ -6,7 +6,11 @@ import { LoadingSpinner } from '~/components/LoadingSpinner';
 import { DebugInfo } from '~/components/DebugInfo';
 import { useWebcam } from '~/hooks/useWebcam';
 import { useTimer } from '~/hooks/useTimer';
+import { usePoseDetection } from '~/hooks/usePoseDetection';
+import { useRepCounting } from '~/hooks/useRepCounting';
+import { useAnimationLoop } from '~/hooks/useAnimationLoop';
 import { getExerciseById } from '~/constants/exercises';
+import { drawPose, resizeCanvas } from '~/utils/canvasUtils';
 import type { WorkoutSession } from '~/types/exercise';
 
 export function meta({ params }: Route.MetaArgs) {
@@ -34,18 +38,98 @@ export default function Workout({ params }: Route.ComponentProps) {
     requestPermission,
     stopStream,
   } = useWebcam();
+
+  const {
+    isModelLoading: isPoseModelLoading,
+    modelError,
+    detectPose,
+    loadModel,
+  } = usePoseDetection();
+
+  const { repState, processFrame, resetCounter, getFormFeedback } =
+    useRepCounting(exercise!);
+
+  const { startLoop, stopLoop } = useAnimationLoop();
+
+  // Animation loop for pose detection and rep counting
+  const processPoseData = async () => {
+    if (videoRef.current && canvasRef.current) {
+      try {
+        const poses = await detectPose(videoRef.current);
+
+        if (poses.length > 0) {
+          const pose = poses[0];
+
+          // Process the pose for rep counting
+          processFrame(poses);
+
+          // Update message based on pose detection
+          if (isWorkoutActive) {
+            const feedback = getFormFeedback();
+            if (feedback) {
+              setCurrentMessage(feedback);
+            } else {
+              setCurrentMessage(
+                `Keep going! Reps: ${repState.repCount}`,
+              );
+            }
+          }
+
+          // Draw pose visualization on canvas
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            // Ensure canvas matches video dimensions (only resize once)
+            if (!canvasResizedRef.current && videoRef.current) {
+              resizeCanvas(canvasRef.current, videoRef.current);
+              canvasResizedRef.current = true;
+            }
+
+            // Draw the pose skeleton and keypoints
+            drawPose(
+              ctx,
+              pose,
+              canvasRef.current.width,
+              canvasRef.current.height,
+            );
+          }
+        } else {
+          // Clear canvas if no pose detected
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(
+              0,
+              0,
+              canvasRef.current.width,
+              canvasRef.current.height,
+            );
+          }
+
+          // Update message for no pose detection
+          if (isWorkoutActive) {
+            setCurrentMessage('Step into view of the camera');
+          }
+        }
+      } catch (error) {
+        console.error('Error processing pose:', error);
+        if (isWorkoutActive) {
+          setCurrentMessage('AI processing error - please continue');
+        }
+      }
+    }
+  };
+
   const { seconds, isRunning, start, pause, reset, formatTime } =
     useTimer();
 
-  const [repCount, setRepCount] = useState(0);
   const [currentMessage, setCurrentMessage] = useState(
     'Get ready to start!',
   );
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
-  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [isAILoading, setIsAILoading] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const startTimeRef = useRef<Date | null>(null);
+  const canvasResizedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!exercise) {
@@ -54,6 +138,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     }
 
     return () => {
+      console.log('Workout component cleanup');
       stopStream();
     };
   }, [exercise, stopStream, navigate]);
@@ -65,6 +150,39 @@ export default function Workout({ params }: Route.ComponentProps) {
     }
   }, []); // Only run once on mount
 
+  // Resize canvas when video dimensions change
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (video && canvas) {
+      const handleLoadedMetadata = () => {
+        resizeCanvas(canvas, video);
+        canvasResizedRef.current = true;
+      };
+
+      const handleResize = () => {
+        resizeCanvas(canvas, video);
+        canvasResizedRef.current = true;
+      };
+
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        video.removeEventListener(
+          'loadedmetadata',
+          handleLoadedMetadata,
+        );
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [hasPermission, stream]);
+
+  // Reset canvas resize flag when stream changes
+  useEffect(() => {
+    canvasResizedRef.current = false;
+  }, [stream]);
   const startWorkout = async () => {
     // Don't request permission again if we already have it
     if (!hasPermission) {
@@ -75,41 +193,97 @@ export default function Workout({ params }: Route.ComponentProps) {
       return;
     }
 
-    setIsModelLoading(true);
+    setIsAILoading(true);
     setCurrentMessage('Loading AI model...');
 
-    // TODO: Initialize TensorFlow.js model here
-    // This will be implemented in the next phase
+    try {
+      // Debug: Check stream status before model loading
+      console.log(
+        'Before model loading - permission:',
+        hasPermission,
+        'stream:',
+        !!stream,
+        'video element:',
+        !!videoRef.current,
+        'video playing:',
+        !videoRef.current?.paused,
+      );
 
-    setTimeout(() => {
-      setIsModelLoading(false);
+      // Load the pose detection model
+      await loadModel();
+
+      // Debug: Check stream status after model loading
+      console.log(
+        'After model loading - permission:',
+        hasPermission,
+        'stream:',
+        !!stream,
+        'video element:',
+        !!videoRef.current,
+        'video playing:',
+        !videoRef.current?.paused,
+      );
+
+      // Check if model loaded successfully
+      if (modelError) {
+        throw new Error(modelError);
+      }
+
+      // Verify we still have permission and stream after model loading
+      if (!hasPermission || !stream) {
+        throw new Error(
+          'Camera permission lost during AI model loading',
+        );
+      }
+
+      // Reset the rep counter for new workout
+      resetCounter();
+
+      // Start the animation loop with pose detection
+      startLoop(processPoseData);
+
+      setIsAILoading(false);
       setIsWorkoutActive(true);
-      setCurrentMessage('Start exercising!');
+      setCurrentMessage(
+        'Start exercising! Stand in front of the camera.',
+      );
       startTimeRef.current = new Date();
       start();
-    }, 2000); // Simulate model loading
+    } catch (error) {
+      console.error('Error starting workout:', error);
+      setIsAILoading(false);
+      setCurrentMessage(
+        `Failed to load AI model: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+      );
+    }
   };
 
   const pauseWorkout = () => {
     setIsWorkoutActive(false);
+    stopLoop(); // Stop pose detection when paused
     pause();
     setCurrentMessage('Workout paused');
   };
 
   const resumeWorkout = () => {
     setIsWorkoutActive(true);
+    startLoop(processPoseData); // Resume pose detection
     start();
-    setCurrentMessage('Keep going!');
+    setCurrentMessage('Workout resumed - keep going!');
   };
 
   const endWorkout = () => {
     const endTime = new Date();
+
+    // Stop pose detection and animation loop
+    stopLoop();
+
     stopStream();
     reset();
 
     const workoutData: WorkoutSession = {
       exercise: exercise!,
-      reps: repCount,
+      reps: repState.repCount,
       duration: seconds,
       startTime: startTimeRef.current || endTime,
       endTime,
@@ -180,15 +354,20 @@ export default function Workout({ params }: Route.ComponentProps) {
       <div className="flex flex-col lg:flex-row h-[calc(100vh-80px)]">
         {/* Video Area */}
         <div className="flex-1 relative bg-black">
-          {isLoading || isModelLoading ? (
+          {isLoading || isAILoading ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center text-white">
                 <LoadingSpinner size="lg" />
                 <p className="mt-4">
-                  {isModelLoading
+                  {isAILoading
                     ? 'Loading AI model...'
                     : 'Starting camera...'}
                 </p>
+                {isPoseModelLoading && (
+                  <p className="text-sm text-gray-300 mt-2">
+                    This may take a moment on first load
+                  </p>
+                )}
               </div>
             </div>
           ) : hasPermission ? (
@@ -200,9 +379,22 @@ export default function Workout({ params }: Route.ComponentProps) {
                 muted
                 className="w-full h-full object-cover video-container"
                 onLoadedMetadata={() => {
-                  // Ensure video plays when metadata is loaded
+                  // Ensure video plays when metadata is loaded with proper promise handling
                   if (videoRef.current) {
-                    videoRef.current.play().catch(console.warn);
+                    const playPromise = videoRef.current.play();
+                    if (playPromise !== undefined) {
+                      playPromise
+                        .then(() => {
+                          console.log('Video playing successfully');
+                        })
+                        .catch((error) => {
+                          console.warn(
+                            'Video autoplay failed:',
+                            error,
+                          );
+                          // Don't reset permission, just log the warning
+                        });
+                    }
                   }
                 }}
                 onError={(e) => {
@@ -213,6 +405,28 @@ export default function Workout({ params }: Route.ComponentProps) {
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full pointer-events-none"
               />
+
+              {/* AI Status Indicator */}
+              {isWorkoutActive && (
+                <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span>AI Active</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Rep Count Overlay */}
+              {isWorkoutActive && (
+                <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-400">
+                      {repState.repCount}
+                    </div>
+                    <div className="text-xs text-gray-300">REPS</div>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -250,7 +464,7 @@ export default function Workout({ params }: Route.ComponentProps) {
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="bg-gray-700 rounded-lg p-4 text-center">
               <div className="text-3xl font-bold text-blue-400">
-                {repCount}
+                {repState.repCount}
               </div>
               <div className="text-sm text-gray-300">Reps</div>
             </div>
@@ -268,17 +482,45 @@ export default function Workout({ params }: Route.ComponentProps) {
             <p className="text-blue-400">{currentMessage}</p>
           </div>
 
+          {/* Form Feedback */}
+          {isWorkoutActive && (
+            <div className="bg-gray-700 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-semibold mb-2">
+                Form Feedback
+              </h3>
+              <p className="text-yellow-400">
+                {getFormFeedback() || 'Keep going!'}
+              </p>
+            </div>
+          )}
+
+          {/* AI Model Error */}
+          {modelError && (
+            <div className="bg-red-700 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-semibold mb-2">AI Error</h3>
+              <p className="text-red-200 text-sm">{modelError}</p>
+            </div>
+          )}
+
           {/* Controls */}
           <div className="space-y-3 mb-6">
             {!isWorkoutActive && seconds === 0 ? (
               <Button
                 onClick={startWorkout}
                 disabled={
-                  !hasPermission || isLoading || isModelLoading
+                  !hasPermission ||
+                  isLoading ||
+                  isAILoading ||
+                  isPoseModelLoading ||
+                  !!modelError
                 }
                 className="w-full"
               >
-                {isModelLoading ? 'Loading...' : 'Start Workout'}
+                {isAILoading || isPoseModelLoading
+                  ? 'Loading AI...'
+                  : modelError
+                    ? 'AI Error - Check Settings'
+                    : 'Start Workout'}
               </Button>
             ) : isWorkoutActive ? (
               <Button
