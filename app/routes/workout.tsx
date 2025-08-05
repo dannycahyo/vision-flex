@@ -1,0 +1,328 @@
+import type { Route } from './+types/workout';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router';
+import { Button } from '~/components/Button';
+import { LoadingSpinner } from '~/components/LoadingSpinner';
+import { DebugInfo } from '~/components/DebugInfo';
+import { useWebcam } from '~/hooks/useWebcam';
+import { useTimer } from '~/hooks/useTimer';
+import { getExerciseById } from '~/constants/exercises';
+import type { WorkoutSession } from '~/types/exercise';
+
+export function meta({ params }: Route.MetaArgs) {
+  const exercise = getExerciseById(params.exercise);
+  return [
+    { title: `VisionFlex - ${exercise?.name || 'Workout'}` },
+    {
+      name: 'description',
+      content: `AI-guided ${exercise?.name || 'workout'} session`,
+    },
+  ];
+}
+
+export default function Workout({ params }: Route.ComponentProps) {
+  const navigate = useNavigate();
+  const { exercise: exerciseId } = params;
+  const exercise = getExerciseById(exerciseId);
+
+  const {
+    videoRef,
+    stream,
+    isLoading,
+    error,
+    hasPermission,
+    requestPermission,
+    stopStream,
+  } = useWebcam();
+  const { seconds, isRunning, start, pause, reset, formatTime } =
+    useTimer();
+
+  const [repCount, setRepCount] = useState(0);
+  const [currentMessage, setCurrentMessage] = useState(
+    'Get ready to start!',
+  );
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const startTimeRef = useRef<Date | null>(null);
+
+  useEffect(() => {
+    if (!exercise) {
+      navigate('/');
+      return;
+    }
+
+    return () => {
+      stopStream();
+    };
+  }, [exercise, stopStream, navigate]);
+
+  // Request camera permission on initial load
+  useEffect(() => {
+    if (!hasPermission && !isLoading && !error) {
+      requestPermission();
+    }
+  }, []); // Only run once on mount
+
+  const startWorkout = async () => {
+    // Don't request permission again if we already have it
+    if (!hasPermission) {
+      setCurrentMessage(
+        'Camera permission required to start workout',
+      );
+      console.log('Requesting camera permission...');
+      return;
+    }
+
+    setIsModelLoading(true);
+    setCurrentMessage('Loading AI model...');
+
+    // TODO: Initialize TensorFlow.js model here
+    // This will be implemented in the next phase
+
+    setTimeout(() => {
+      setIsModelLoading(false);
+      setIsWorkoutActive(true);
+      setCurrentMessage('Start exercising!');
+      startTimeRef.current = new Date();
+      start();
+    }, 2000); // Simulate model loading
+  };
+
+  const pauseWorkout = () => {
+    setIsWorkoutActive(false);
+    pause();
+    setCurrentMessage('Workout paused');
+  };
+
+  const resumeWorkout = () => {
+    setIsWorkoutActive(true);
+    start();
+    setCurrentMessage('Keep going!');
+  };
+
+  const endWorkout = () => {
+    const endTime = new Date();
+    stopStream();
+    reset();
+
+    const workoutData: WorkoutSession = {
+      exercise: exercise!,
+      reps: repCount,
+      duration: seconds,
+      startTime: startTimeRef.current || endTime,
+      endTime,
+    };
+
+    navigate('/summary', { state: { workoutData } });
+  };
+
+  if (!exercise) {
+    return null; // Will redirect in useEffect
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="bg-red-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Camera Access Required
+          </h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={() => navigate('/')}>Back to Home</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      <DebugInfo
+        hasPermission={hasPermission}
+        isLoading={isLoading}
+        error={error}
+        stream={stream}
+      />
+
+      {/* Header */}
+      <div className="bg-gray-800 text-white p-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">{exercise.name}</h1>
+            <p className="text-gray-300">AI-Guided Workout</p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/')}
+            className="text-gray-900"
+          >
+            Exit Workout
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row h-[calc(100vh-80px)]">
+        {/* Video Area */}
+        <div className="flex-1 relative bg-black">
+          {isLoading || isModelLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-white">
+                <LoadingSpinner size="lg" />
+                <p className="mt-4">
+                  {isModelLoading
+                    ? 'Loading AI model...'
+                    : 'Starting camera...'}
+                </p>
+              </div>
+            </div>
+          ) : hasPermission ? (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover video-container"
+                onLoadedMetadata={() => {
+                  // Ensure video plays when metadata is loaded
+                  if (videoRef.current) {
+                    videoRef.current.play().catch(console.warn);
+                  }
+                }}
+                onError={(e) => {
+                  console.error('Video error:', e);
+                }}
+              />
+              <canvas
+                ref={canvasRef}
+                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              />
+            </>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-white">
+                <div className="bg-gray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <p className="mb-4">Camera permission is required</p>
+                <Button
+                  onClick={requestPermission}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Requesting...' : 'Grant Permission'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Control Panel */}
+        <div className="lg:w-80 bg-gray-800 text-white p-6 flex flex-col">
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-3xl font-bold text-blue-400">
+                {repCount}
+              </div>
+              <div className="text-sm text-gray-300">Reps</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-3xl font-bold text-green-400">
+                {formatTime(seconds)}
+              </div>
+              <div className="text-sm text-gray-300">Time</div>
+            </div>
+          </div>
+
+          {/* Current Message */}
+          <div className="bg-gray-700 rounded-lg p-4 mb-6">
+            <h3 className="text-lg font-semibold mb-2">Status</h3>
+            <p className="text-blue-400">{currentMessage}</p>
+          </div>
+
+          {/* Controls */}
+          <div className="space-y-3 mb-6">
+            {!isWorkoutActive && seconds === 0 ? (
+              <Button
+                onClick={startWorkout}
+                disabled={
+                  !hasPermission || isLoading || isModelLoading
+                }
+                className="w-full"
+              >
+                {isModelLoading ? 'Loading...' : 'Start Workout'}
+              </Button>
+            ) : isWorkoutActive ? (
+              <Button
+                onClick={pauseWorkout}
+                variant="secondary"
+                className="w-full"
+              >
+                Pause Workout
+              </Button>
+            ) : (
+              <Button onClick={resumeWorkout} className="w-full">
+                Resume Workout
+              </Button>
+            )}
+
+            {seconds > 0 && (
+              <Button
+                onClick={endWorkout}
+                variant="danger"
+                className="w-full"
+              >
+                End Workout
+              </Button>
+            )}
+          </div>
+
+          {/* Exercise Instructions */}
+          <div className="bg-gray-700 rounded-lg p-4 flex-1">
+            <h3 className="text-lg font-semibold mb-3">
+              Instructions
+            </h3>
+            <ul className="space-y-2 text-sm text-gray-300">
+              {exercise.instructions.map((instruction, index) => (
+                <li key={index} className="flex items-start">
+                  <span className="text-blue-400 mr-2">
+                    {index + 1}.
+                  </span>
+                  <span>{instruction}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
