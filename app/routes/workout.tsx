@@ -37,6 +37,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     hasPermission,
     requestPermission,
     stopStream,
+    ensureStream, // Add the new function
   } = useWebcam();
 
   const {
@@ -55,7 +56,27 @@ export default function Workout({ params }: Route.ComponentProps) {
   const processPoseData = async () => {
     if (videoRef.current && canvasRef.current) {
       try {
+        // Log video element status for debugging
+        if (!videoRef.current.srcObject) {
+          console.log('Video has no srcObject during pose detection');
+          if (stream) {
+            console.log('Reconnecting stream to video');
+            videoRef.current.srcObject = stream;
+          }
+        }
+
         const poses = await detectPose(videoRef.current);
+
+        // Clear canvas first to ensure we don't leave artifacts
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(
+            0,
+            0,
+            canvasRef.current.width,
+            canvasRef.current.height,
+          );
+        }
 
         if (poses.length > 0) {
           const pose = poses[0];
@@ -76,7 +97,6 @@ export default function Workout({ params }: Route.ComponentProps) {
           }
 
           // Draw pose visualization on canvas
-          const ctx = canvasRef.current.getContext('2d');
           if (ctx) {
             // Ensure canvas matches video dimensions (only resize once)
             if (!canvasResizedRef.current && videoRef.current) {
@@ -131,6 +151,10 @@ export default function Workout({ params }: Route.ComponentProps) {
   const startTimeRef = useRef<Date | null>(null);
   const canvasResizedRef = useRef<boolean>(false);
 
+  // Add this near the top of your component
+  const [disableStreamCleanup, setDisableStreamCleanup] =
+    useState(false);
+
   useEffect(() => {
     if (!exercise) {
       navigate('/');
@@ -138,10 +162,50 @@ export default function Workout({ params }: Route.ComponentProps) {
     }
 
     return () => {
-      console.log('Workout component cleanup');
-      stopStream();
+      console.log(
+        'Workout component cleanup - disableCleanup:',
+        disableStreamCleanup,
+      );
+      if (!disableStreamCleanup) {
+        stopStream();
+      }
     };
-  }, [exercise, stopStream, navigate]);
+  }, [exercise, navigate, disableStreamCleanup]); // Remove stopStream from dependencies
+
+  // Add debug logging to track when stopStream is called
+  const debugStopStream = () => {
+    console.log('Explicitly calling stopStream');
+    stopStream();
+  };
+
+  const endWorkout = () => {
+    const endTime = new Date();
+
+    // Stop pose detection and animation loop
+    stopLoop();
+
+    // Use the debug version to track calls
+    debugStopStream();
+    reset();
+
+    const workoutData: WorkoutSession = {
+      exercise: exercise!,
+      reps: repState.repCount,
+      duration: seconds,
+      startTime: startTimeRef.current || endTime,
+      endTime,
+    };
+
+    navigate('/summary', { state: { workoutData } });
+  };
+
+  // Log whenever we enter the component rendering phase
+  console.log(
+    'Rendering workout component, isWorkoutActive:',
+    isWorkoutActive,
+    'stream:',
+    !!stream,
+  );
 
   // Request camera permission on initial load
   useEffect(() => {
@@ -184,13 +248,20 @@ export default function Workout({ params }: Route.ComponentProps) {
     canvasResizedRef.current = false;
   }, [stream]);
   const startWorkout = async () => {
-    // Don't request permission again if we already have it
+    // Temporarily disable stream cleanup to prevent issues
+    setDisableStreamCleanup(true);
+
+    // Try to ensure we have an active stream if permission was previously granted
     if (!hasPermission) {
-      setCurrentMessage(
-        'Camera permission required to start workout',
-      );
-      console.log('Requesting camera permission...');
-      return;
+      const streamRestored = await ensureStream();
+
+      if (!streamRestored) {
+        setCurrentMessage(
+          'Camera permission required to start workout',
+        );
+        console.log('Requesting camera permission...');
+        return;
+      }
     }
 
     setIsAILoading(true);
@@ -230,10 +301,14 @@ export default function Workout({ params }: Route.ComponentProps) {
       }
 
       // Verify we still have permission and stream after model loading
-      if (!hasPermission || !stream) {
-        throw new Error(
-          'Camera permission lost during AI model loading',
-        );
+      if (!stream) {
+        // Try to restore the stream if it was lost during model loading
+        const streamRestored = await ensureStream();
+        if (!streamRestored) {
+          throw new Error(
+            'Camera stream lost during AI model loading',
+          );
+        }
       }
 
       // Reset the rep counter for new workout
@@ -255,6 +330,9 @@ export default function Workout({ params }: Route.ComponentProps) {
       setCurrentMessage(
         `Failed to load AI model: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
       );
+    } finally {
+      // Re-enable cleanup after workout is started
+      setTimeout(() => setDisableStreamCleanup(false), 1000);
     }
   };
 
@@ -265,31 +343,24 @@ export default function Workout({ params }: Route.ComponentProps) {
     setCurrentMessage('Workout paused');
   };
 
-  const resumeWorkout = () => {
+  console.log('Stream status:', stream);
+
+  const resumeWorkout = async () => {
+    // Ensure we have an active stream before resuming
+    if (!stream) {
+      const streamRestored = await ensureStream();
+      if (!streamRestored) {
+        setCurrentMessage(
+          'Camera permission required to resume workout',
+        );
+        return;
+      }
+    }
+
     setIsWorkoutActive(true);
     startLoop(processPoseData); // Resume pose detection
     start();
     setCurrentMessage('Workout resumed - keep going!');
-  };
-
-  const endWorkout = () => {
-    const endTime = new Date();
-
-    // Stop pose detection and animation loop
-    stopLoop();
-
-    stopStream();
-    reset();
-
-    const workoutData: WorkoutSession = {
-      exercise: exercise!,
-      reps: repState.repCount,
-      duration: seconds,
-      startTime: startTimeRef.current || endTime,
-      endTime,
-    };
-
-    navigate('/summary', { state: { workoutData } });
   };
 
   if (!exercise) {
@@ -327,13 +398,6 @@ export default function Workout({ params }: Route.ComponentProps) {
 
   return (
     <div className="min-h-screen bg-gray-900">
-      <DebugInfo
-        hasPermission={hasPermission}
-        isLoading={isLoading}
-        error={error}
-        stream={stream}
-      />
-
       {/* Header */}
       <div className="bg-gray-800 text-white p-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -370,15 +434,17 @@ export default function Workout({ params }: Route.ComponentProps) {
                 )}
               </div>
             </div>
-          ) : hasPermission ? (
+          ) : stream ? (
             <>
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover video-container"
+                className="w-full h-full object-contain video-container" // Changed from object-cover to object-contain
+                style={{ backgroundColor: 'black', display: 'block' }} // Force display and add background
                 onLoadedMetadata={() => {
+                  console.log('Video metadata loaded');
                   // Ensure video plays when metadata is loaded with proper promise handling
                   if (videoRef.current) {
                     const playPromise = videoRef.current.play();
@@ -404,6 +470,7 @@ export default function Workout({ params }: Route.ComponentProps) {
               <canvas
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                style={{ backgroundColor: 'transparent' }} // Ensure canvas is transparent
               />
 
               {/* AI Status Indicator */}
