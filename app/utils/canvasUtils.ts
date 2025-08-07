@@ -28,6 +28,9 @@ export function drawPose(
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
+  // Save context state
+  ctx.save();
+
   // Draw skeleton
   ctx.strokeStyle = '#00ff00';
   ctx.lineWidth = 2;
@@ -67,6 +70,9 @@ export function drawPose(
       ctx.fill();
     }
   });
+
+  // Restore context state
+  ctx.restore();
 }
 
 /**

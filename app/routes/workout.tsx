@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '~/components/Button';
 import { LoadingSpinner } from '~/components/LoadingSpinner';
-import { DebugInfo } from '~/components/DebugInfo';
 import { useWebcam } from '~/hooks/useWebcam';
 import { useTimer } from '~/hooks/useTimer';
 import { usePoseDetection } from '~/hooks/usePoseDetection';
@@ -441,8 +440,12 @@ export default function Workout({ params }: Route.ComponentProps) {
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-contain video-container" // Changed from object-cover to object-contain
-                style={{ backgroundColor: 'black', display: 'block' }} // Force display and add background
+                className="w-full h-full object-contain video-container"
+                style={{
+                  backgroundColor: 'black',
+                  display: 'block',
+                  transform: 'scaleX(-1)', // Mirror the video horizontally
+                }}
                 onLoadedMetadata={() => {
                   console.log('Video metadata loaded');
                   // Ensure video plays when metadata is loaded with proper promise handling
@@ -470,7 +473,10 @@ export default function Workout({ params }: Route.ComponentProps) {
               <canvas
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                style={{ backgroundColor: 'transparent' }} // Ensure canvas is transparent
+                style={{
+                  backgroundColor: 'transparent',
+                  transform: 'scaleX(-1)', // Mirror the canvas to match video
+                }}
               />
 
               {/* AI Status Indicator */}
