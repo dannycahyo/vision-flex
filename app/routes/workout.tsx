@@ -78,6 +78,9 @@ export default function Workout({ params }: Route.ComponentProps) {
         }
 
         if (poses.length > 0) {
+          console.log(
+            `Detected ${poses.length} poses, processing first one`,
+          );
           const pose = poses[0];
 
           // Process the pose for rep counting
@@ -197,14 +200,6 @@ export default function Workout({ params }: Route.ComponentProps) {
 
     navigate('/summary', { state: { workoutData } });
   };
-
-  // Log whenever we enter the component rendering phase
-  console.log(
-    'Rendering workout component, isWorkoutActive:',
-    isWorkoutActive,
-    'stream:',
-    !!stream,
-  );
 
   // Request camera permission on initial load
   useEffect(() => {
@@ -341,8 +336,6 @@ export default function Workout({ params }: Route.ComponentProps) {
     pause();
     setCurrentMessage('Workout paused');
   };
-
-  console.log('Stream status:', stream);
 
   const resumeWorkout = async () => {
     // Ensure we have an active stream before resuming

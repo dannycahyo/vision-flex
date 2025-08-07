@@ -43,11 +43,15 @@ export function processSquatRep(
   const RIGHT_HIP = 12;
   const LEFT_KNEE = 13;
   const RIGHT_KNEE = 14;
+  const LEFT_ANKLE = 15;
+  const RIGHT_ANKLE = 16;
 
   const leftHip = pose.keypoints[LEFT_HIP];
   const rightHip = pose.keypoints[RIGHT_HIP];
   const leftKnee = pose.keypoints[LEFT_KNEE];
   const rightKnee = pose.keypoints[RIGHT_KNEE];
+  const leftAnkle = pose.keypoints[LEFT_ANKLE];
+  const rightAnkle = pose.keypoints[RIGHT_ANKLE];
 
   // Check if keypoints are visible
   if (
@@ -56,12 +60,24 @@ export function processSquatRep(
     leftKnee.confidence < 0.5 ||
     rightKnee.confidence < 0.5
   ) {
-    return state;
+    console.log('Squat: Key body points not visible');
+    return {
+      ...state,
+      formFeedback:
+        'Position yourself so your hips and knees are visible',
+    };
   }
 
   // Calculate average hip and knee heights
   const avgHipY = (leftHip.y + rightHip.y) / 2;
   const avgKneeY = (leftKnee.y + rightKnee.y) / 2;
+
+  // Calculate knee width for stance feedback
+  const kneeWidth = Math.abs(leftKnee.x - rightKnee.x);
+
+  console.log(
+    `Squat: Hip height: ${avgHipY.toFixed(3)}, Knee height: ${avgKneeY.toFixed(3)}, Knee width: ${kneeWidth.toFixed(3)}`,
+  );
 
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
@@ -73,18 +89,64 @@ export function processSquatRep(
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
+  let formFeedback = '';
+
+  // Check for knee alignment issues
+  if (kneeWidth < 0.08) {
+    formFeedback =
+      'Keep your knees aligned with your feet, slightly wider stance';
+  }
+
+  // Improved thresholds for squat detection
+  const SQUAT_DOWN_THRESHOLD = 0.05; // Hip is below knee
+  const SQUAT_UP_THRESHOLD = 0.02; // Hip is back above knee
+
+  // Check ankle visibility for depth feedback
+  const anklesVisible =
+    leftAnkle.confidence > 0.5 && rightAnkle.confidence > 0.5;
 
   // Check for state transitions
-  if (state.currentState === 'up' && avgHipY > avgKneeY + 0.05) {
+  if (
+    state.currentState === 'up' &&
+    avgHipY > avgKneeY + SQUAT_DOWN_THRESHOLD
+  ) {
     // Hip is significantly below knee level - squat down
     newState = 'down';
+    console.log(
+      `Squat: Transitioning to DOWN state, hip-knee diff: ${(avgHipY - avgKneeY).toFixed(3)}`,
+    );
+
+    // Add form feedback for proper depth
+    if (anklesVisible) {
+      const avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
+      const hipToAnkleRatio =
+        (avgHipY - avgAnkleY) / (avgKneeY - avgAnkleY);
+
+      if (hipToAnkleRatio < 0.7) {
+        formFeedback =
+          'Try to squat deeper, aim for thighs parallel to ground';
+      } else {
+        formFeedback = 'Good depth! Hold for a moment at the bottom';
+      }
+    }
   } else if (
     state.currentState === 'down' &&
-    avgHipY < avgKneeY - 0.02
+    avgHipY < avgKneeY - SQUAT_UP_THRESHOLD
   ) {
     // Hip is back above knee level - complete rep
     newState = 'up';
     newRepCount = state.repCount + 1;
+    console.log(`Squat rep completed! Count: ${newRepCount}`);
+
+    // Provide feedback on the completed rep
+    formFeedback = 'Good! Keep your back straight for the next rep';
+  } else {
+    // In-between states, provide guidance
+    if (state.currentState === 'up' && avgHipY > avgKneeY - 0.03) {
+      formFeedback = 'Begin lowering into your squat, keep chest up';
+    } else if (state.currentState === 'down') {
+      formFeedback = 'Push through your heels to stand back up';
+    }
   }
 
   return {
@@ -92,11 +154,12 @@ export function processSquatRep(
     repCount: newRepCount,
     lastStateChange:
       newState !== state.currentState ? now : state.lastStateChange,
+    formFeedback: formFeedback || state.formFeedback,
   };
 }
 
 /**
- * Bicep curl rep counter logic
+ * Bicep curl rep counter logic & form feedback
  */
 export function processBicepCurlRep(
   pose: Pose,
@@ -110,21 +173,61 @@ export function processBicepCurlRep(
   const RIGHT_ELBOW = 8;
   const RIGHT_WRIST = 10;
 
-  // Use right arm for simplicity (can be extended to use both arms)
-  const shoulder = pose.keypoints[RIGHT_SHOULDER];
-  const elbow = pose.keypoints[RIGHT_ELBOW];
-  const wrist = pose.keypoints[RIGHT_WRIST];
+  // Track both arms for better detection
+  const leftShoulder = pose.keypoints[LEFT_SHOULDER];
+  const leftElbow = pose.keypoints[LEFT_ELBOW];
+  const leftWrist = pose.keypoints[LEFT_WRIST];
+  const rightShoulder = pose.keypoints[RIGHT_SHOULDER];
+  const rightElbow = pose.keypoints[RIGHT_ELBOW];
+  const rightWrist = pose.keypoints[RIGHT_WRIST];
 
-  // Check if keypoints are visible
-  if (
-    shoulder.confidence < 0.5 ||
-    elbow.confidence < 0.5 ||
-    wrist.confidence < 0.5
-  ) {
-    return state;
+  // Check if keypoints are visible for at least one arm
+  const leftArmVisible =
+    leftShoulder.confidence > 0.5 &&
+    leftElbow.confidence > 0.5 &&
+    leftWrist.confidence > 0.5;
+
+  const rightArmVisible =
+    rightShoulder.confidence > 0.5 &&
+    rightElbow.confidence > 0.5 &&
+    rightWrist.confidence > 0.5;
+
+  if (!leftArmVisible && !rightArmVisible) {
+    console.log('Bicep curl: Neither arm is fully visible');
+    return {
+      ...state,
+      formFeedback: 'Position yourself so your arms are visible',
+    };
   }
 
-  const angle = calculateAngle(shoulder, elbow, wrist);
+  // Calculate angles for both arms
+  const leftAngle = leftArmVisible
+    ? calculateAngle(leftShoulder, leftElbow, leftWrist)
+    : 999;
+  const rightAngle = rightArmVisible
+    ? calculateAngle(rightShoulder, rightElbow, rightWrist)
+    : 999;
+
+  // Use the best visible arm or the one with more bend
+  let primaryAngle: number;
+  let activeArm: string;
+
+  if (leftArmVisible && rightArmVisible) {
+    // If both arms visible, use the one that's more bent (smaller angle)
+    primaryAngle = Math.min(leftAngle, rightAngle);
+    activeArm = leftAngle <= rightAngle ? 'left' : 'right';
+  } else if (leftArmVisible) {
+    primaryAngle = leftAngle;
+    activeArm = 'left';
+  } else {
+    primaryAngle = rightAngle;
+    activeArm = 'right';
+  }
+
+  console.log(
+    `Bicep curl: Using ${activeArm} arm, angle: ${primaryAngle.toFixed(1)}°, current state: ${state.currentState}`,
+  );
+
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
 
@@ -135,15 +238,78 @@ export function processBicepCurlRep(
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
+  let formFeedback = '';
+
+  // Form feedback based on arm position
+  if (leftArmVisible && rightArmVisible) {
+    const angleDifference = Math.abs(leftAngle - rightAngle);
+    if (angleDifference > 30) {
+      formFeedback = 'Try to keep both arms moving at the same pace';
+    }
+  }
+
+  // Check elbow positioning
+  if (leftArmVisible || rightArmVisible) {
+    const elbow = leftArmVisible ? leftElbow : rightElbow;
+    const shoulder = leftArmVisible ? leftShoulder : rightShoulder;
+
+    // Check if elbow is wandering forward or backward too much
+    if (Math.abs(elbow.x - shoulder.x) > 0.15) {
+      formFeedback = 'Keep your elbow close to your body';
+    }
+  }
+
+  // More tolerant thresholds for state detection
+  const CONTRACTED_ANGLE = 80; // More forgiving - was 70
+  const EXTENDED_ANGLE = 140; // More forgiving - was 150
+
+  // Log the state and angle more clearly
+  console.log(
+    `Current state: ${state.currentState}, Angle: ${primaryAngle.toFixed(1)}, Threshold check: ${primaryAngle < CONTRACTED_ANGLE ? 'CURL DETECTED' : 'NOT CURLED'}`,
+  );
 
   // Check for state transitions
-  if (state.currentState === 'extended' && angle < 50) {
+  if (
+    state.currentState === 'extended' &&
+    primaryAngle < CONTRACTED_ANGLE
+  ) {
     // Arm is contracted
     newState = 'contracted';
-  } else if (state.currentState === 'contracted' && angle > 160) {
+    console.log(
+      `Bicep curl state change: extended → contracted (${primaryAngle.toFixed(
+        1,
+      )}°)`,
+    );
+
+    // Add form feedback for contracted position
+    if (primaryAngle < 40) {
+      formFeedback = 'Good contraction! Hold briefly at the top';
+    }
+  } else if (
+    state.currentState === 'contracted' &&
+    primaryAngle > EXTENDED_ANGLE
+  ) {
     // Arm is extended - complete rep
     newState = 'extended';
     newRepCount = state.repCount + 1;
+    console.log(
+      `Bicep curl rep completed! Count: ${newRepCount}, angle: ${primaryAngle.toFixed(
+        1,
+      )}°`,
+    );
+
+    // Add form feedback for extended position
+    formFeedback = 'Good extension! Control the downward movement';
+  } else {
+    // In-between states, provide guidance
+    if (state.currentState === 'extended' && primaryAngle < 110) {
+      formFeedback = 'Continue curling upward';
+    } else if (
+      state.currentState === 'contracted' &&
+      primaryAngle > 100
+    ) {
+      formFeedback = 'Slowly lower your arm';
+    }
   }
 
   return {
@@ -151,72 +317,6 @@ export function processBicepCurlRep(
     repCount: newRepCount,
     lastStateChange:
       newState !== state.currentState ? now : state.lastStateChange,
-  };
-}
-
-/**
- * Push-up rep counter logic (simplified)
- */
-export function processPushUpRep(
-  pose: Pose,
-  state: RepCounterState,
-): RepCounterState {
-  // MoveNet keypoint indices
-  const LEFT_SHOULDER = 5;
-  const RIGHT_SHOULDER = 6;
-  const LEFT_ELBOW = 7;
-  const RIGHT_ELBOW = 8;
-
-  const leftShoulder = pose.keypoints[LEFT_SHOULDER];
-  const rightShoulder = pose.keypoints[RIGHT_SHOULDER];
-  const leftElbow = pose.keypoints[LEFT_ELBOW];
-  const rightElbow = pose.keypoints[RIGHT_ELBOW];
-
-  // Check if keypoints are visible
-  if (
-    leftShoulder.confidence < 0.5 ||
-    rightShoulder.confidence < 0.5 ||
-    leftElbow.confidence < 0.5 ||
-    rightElbow.confidence < 0.5
-  ) {
-    return state;
-  }
-
-  // Calculate average shoulder and elbow heights
-  const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
-  const avgElbowY = (leftElbow.y + rightElbow.y) / 2;
-
-  const now = Date.now();
-  const timeSinceLastChange = now - state.lastStateChange;
-
-  // Prevent state changes too frequently (debounce)
-  if (timeSinceLastChange < 500) {
-    return state;
-  }
-
-  let newState = state.currentState;
-  let newRepCount = state.repCount;
-
-  // Check for state transitions (simplified logic)
-  if (
-    state.currentState === 'up' &&
-    avgElbowY > avgShoulderY + 0.03
-  ) {
-    // Elbows below shoulders - push-up down
-    newState = 'down';
-  } else if (
-    state.currentState === 'down' &&
-    avgElbowY < avgShoulderY + 0.01
-  ) {
-    // Elbows back in line with shoulders - complete rep
-    newState = 'up';
-    newRepCount = state.repCount + 1;
-  }
-
-  return {
-    currentState: newState as ExerciseState,
-    repCount: newRepCount,
-    lastStateChange:
-      newState !== state.currentState ? now : state.lastStateChange,
+    formFeedback: formFeedback || null, // Reset feedback if no new feedback
   };
 }
