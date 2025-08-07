@@ -100,7 +100,7 @@ export default function Home() {
 
       {/* Camera Permission Section */}
       {cameraPermission !== 'granted' && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col items-center text-center">
               <div className="flex items-center mb-3">
@@ -128,10 +128,10 @@ export default function Home() {
                   size="sm"
                 >
                   {isRequestingPermission ? (
-                    <>
+                    <div className="flex items-center">
                       <LoadingSpinner size="sm" className="mr-2" />
-                      Requesting...
-                    </>
+                      <span>Requesting...</span>
+                    </div>
                   ) : (
                     'Grant Camera Access'
                   )}
@@ -143,7 +143,7 @@ export default function Home() {
       )}
 
       {/* Exercise Selection */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
             Choose Your Exercise
