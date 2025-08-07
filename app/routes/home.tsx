@@ -100,12 +100,12 @@ export default function Home() {
 
       {/* Camera Permission Section */}
       {cameraPermission !== 'granted' && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
+            <div className="flex flex-col items-center text-center">
+              <div className="flex items-center mb-3">
                 <svg
-                  className="h-5 w-5 text-yellow-400"
+                  className="h-5 w-5 text-yellow-400 mr-2"
                   viewBox="0 0 20 20"
                   fill="currentColor"
                 >
@@ -115,8 +115,6 @@ export default function Home() {
                     clipRule="evenodd"
                   />
                 </svg>
-              </div>
-              <div className="ml-3 flex-1">
                 <p className="text-sm text-yellow-700">
                   {cameraPermission === 'denied'
                     ? 'Camera access is required for pose detection. Please enable camera access in your browser settings and refresh the page.'
@@ -124,22 +122,20 @@ export default function Home() {
                 </p>
               </div>
               {cameraPermission === 'prompt' && (
-                <div className="ml-3">
-                  <Button
-                    onClick={requestCameraPermission}
-                    disabled={isRequestingPermission}
-                    size="sm"
-                  >
-                    {isRequestingPermission ? (
-                      <>
-                        <LoadingSpinner size="sm" className="mr-2" />
-                        Requesting...
-                      </>
-                    ) : (
-                      'Grant Camera Access'
-                    )}
-                  </Button>
-                </div>
+                <Button
+                  onClick={requestCameraPermission}
+                  disabled={isRequestingPermission}
+                  size="sm"
+                >
+                  {isRequestingPermission ? (
+                    <div className="flex items-center">
+                      <LoadingSpinner size="sm" className="mr-2" />
+                      <span>Requesting...</span>
+                    </div>
+                  ) : (
+                    'Grant Camera Access'
+                  )}
+                </Button>
               )}
             </div>
           </div>
@@ -147,7 +143,7 @@ export default function Home() {
       )}
 
       {/* Exercise Selection */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
             Choose Your Exercise

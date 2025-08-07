@@ -5,6 +5,7 @@ export interface Exercise {
   targetMuscles: string[];
   difficulty: 'beginner' | 'intermediate' | 'advanced';
   instructions: string[];
+  initialState: ExerciseState;
 }
 
 export interface WorkoutSession {
@@ -32,4 +33,5 @@ export interface RepCounterState {
   currentState: ExerciseState;
   repCount: number;
   lastStateChange: number;
+  formFeedback: string | null;
 }

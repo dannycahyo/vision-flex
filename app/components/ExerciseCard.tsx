@@ -13,7 +13,7 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-200">
+    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-200 flex flex-col h-full">
       <div className="flex justify-between items-start mb-4">
         <h3 className="text-xl font-semibold text-gray-900">
           {exercise.name}
@@ -25,7 +25,9 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
         </span>
       </div>
 
-      <p className="text-gray-600 mb-4">{exercise.description}</p>
+      <p className="text-gray-600 mb-4 flex-grow">
+        {exercise.description}
+      </p>
 
       <div className="mb-4">
         <h4 className="text-sm font-medium text-gray-900 mb-2">
@@ -45,7 +47,7 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
 
       <Link
         to={`/workout/${exercise.id}`}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200 inline-block text-center"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200 inline-block text-center mt-auto"
       >
         Start Workout
       </Link>

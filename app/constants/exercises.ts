@@ -4,6 +4,7 @@ export const EXERCISES: Exercise[] = [
   {
     id: 'squats',
     name: 'Squats',
+    initialState: 'up',
     description:
       'Lower body strength exercise targeting quadriceps, glutes, and hamstrings',
     targetMuscles: ['Quadriceps', 'Glutes', 'Hamstrings', 'Core'],
@@ -19,6 +20,7 @@ export const EXERCISES: Exercise[] = [
   {
     id: 'bicep-curls',
     name: 'Bicep Curls',
+    initialState: 'extended',
     description: 'Upper body exercise targeting the biceps',
     targetMuscles: ['Biceps', 'Forearms'],
     difficulty: 'beginner',
@@ -28,20 +30,6 @@ export const EXERCISES: Exercise[] = [
       'Keep elbows close to your sides',
       'Curl weights up by contracting biceps',
       'Slowly lower weights back to starting position',
-    ],
-  },
-  {
-    id: 'push-ups',
-    name: 'Push-ups',
-    description: 'Upper body and core exercise',
-    targetMuscles: ['Chest', 'Shoulders', 'Triceps', 'Core'],
-    difficulty: 'intermediate',
-    instructions: [
-      'Start in plank position with hands shoulder-width apart',
-      'Keep body in straight line from head to heels',
-      'Lower body until chest nearly touches the floor',
-      'Push back up to starting position',
-      'Keep core engaged throughout the movement',
     ],
   },
 ];
