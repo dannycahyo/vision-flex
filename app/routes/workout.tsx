@@ -419,7 +419,7 @@ export default function Workout({ params }: Route.ComponentProps) {
         <div className="flex-1 relative bg-black">
           {isLoading || isAILoading ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-white">
+              <div className="flex flex-col items-center text-center text-white">
                 <LoadingSpinner size="lg" />
                 <p className="mt-4">
                   {isAILoading
@@ -481,7 +481,7 @@ export default function Workout({ params }: Route.ComponentProps) {
 
               {/* AI Status Indicator */}
               {isWorkoutActive && (
-                <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
+                <div className="absolute top-4 left-12 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                     <span>AI Active</span>
@@ -491,7 +491,7 @@ export default function Workout({ params }: Route.ComponentProps) {
 
               {/* Rep Count Overlay */}
               {isWorkoutActive && (
-                <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
+                <div className="absolute top-4 right-16 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-400">
                       {repState.repCount}
@@ -532,109 +532,113 @@ export default function Workout({ params }: Route.ComponentProps) {
         </div>
 
         {/* Control Panel */}
-        <div className="lg:w-80 bg-gray-800 text-white p-6 flex flex-col">
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-blue-400">
-                {repState.repCount}
+        <div className="lg:w-80 bg-gray-800 text-white flex flex-col max-h-[calc(100vh-80px)] overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-gray-700 rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold text-blue-400">
+                  {repState.repCount}
+                </div>
+                <div className="text-sm text-gray-300">Reps</div>
               </div>
-              <div className="text-sm text-gray-300">Reps</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">
-                {formatTime(seconds)}
+              <div className="bg-gray-700 rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold text-green-400">
+                  {formatTime(seconds)}
+                </div>
+                <div className="text-sm text-gray-300">Time</div>
               </div>
-              <div className="text-sm text-gray-300">Time</div>
             </div>
-          </div>
 
-          {/* Current Message */}
-          <div className="bg-gray-700 rounded-lg p-4 mb-6">
-            <h3 className="text-lg font-semibold mb-2">Status</h3>
-            <p className="text-blue-400">{currentMessage}</p>
-          </div>
-
-          {/* Form Feedback */}
-          {isWorkoutActive && (
+            {/* Current Message */}
             <div className="bg-gray-700 rounded-lg p-4 mb-6">
-              <h3 className="text-lg font-semibold mb-2">
-                Form Feedback
+              <h3 className="text-lg font-semibold mb-2">Status</h3>
+              <p className="text-blue-400">{currentMessage}</p>
+            </div>
+
+            {/* Form Feedback */}
+            {isWorkoutActive && (
+              <div className="bg-gray-700 rounded-lg p-4 mb-6">
+                <h3 className="text-lg font-semibold mb-2">
+                  Form Feedback
+                </h3>
+                <p className="text-yellow-400">
+                  {getFormFeedback() || 'Keep going!'}
+                </p>
+              </div>
+            )}
+
+            {/* AI Model Error */}
+            {modelError && (
+              <div className="bg-red-700 rounded-lg p-4 mb-6">
+                <h3 className="text-lg font-semibold mb-2">
+                  AI Error
+                </h3>
+                <p className="text-red-200 text-sm">{modelError}</p>
+              </div>
+            )}
+
+            {/* Controls */}
+            <div className="space-y-3 mb-6">
+              {!isWorkoutActive && seconds === 0 ? (
+                <Button
+                  onClick={startWorkout}
+                  disabled={
+                    !hasPermission ||
+                    isLoading ||
+                    isAILoading ||
+                    isPoseModelLoading ||
+                    !!modelError
+                  }
+                  className="w-full"
+                >
+                  {isAILoading || isPoseModelLoading
+                    ? 'Loading AI...'
+                    : modelError
+                      ? 'AI Error - Check Settings'
+                      : 'Start Workout'}
+                </Button>
+              ) : isWorkoutActive ? (
+                <Button
+                  onClick={pauseWorkout}
+                  variant="secondary"
+                  className="w-full"
+                >
+                  Pause Workout
+                </Button>
+              ) : (
+                <Button onClick={resumeWorkout} className="w-full">
+                  Resume Workout
+                </Button>
+              )}
+
+              {seconds > 0 && (
+                <Button
+                  onClick={endWorkout}
+                  variant="danger"
+                  className="w-full"
+                >
+                  End Workout
+                </Button>
+              )}
+            </div>
+
+            {/* Exercise Instructions */}
+            <div className="bg-gray-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold mb-3">
+                Instructions
               </h3>
-              <p className="text-yellow-400">
-                {getFormFeedback() || 'Keep going!'}
-              </p>
+              <ul className="space-y-2 text-sm text-gray-300">
+                {exercise.instructions.map((instruction, index) => (
+                  <li key={index} className="flex items-start">
+                    <span className="text-blue-400 mr-2">
+                      {index + 1}.
+                    </span>
+                    <span>{instruction}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          )}
-
-          {/* AI Model Error */}
-          {modelError && (
-            <div className="bg-red-700 rounded-lg p-4 mb-6">
-              <h3 className="text-lg font-semibold mb-2">AI Error</h3>
-              <p className="text-red-200 text-sm">{modelError}</p>
-            </div>
-          )}
-
-          {/* Controls */}
-          <div className="space-y-3 mb-6">
-            {!isWorkoutActive && seconds === 0 ? (
-              <Button
-                onClick={startWorkout}
-                disabled={
-                  !hasPermission ||
-                  isLoading ||
-                  isAILoading ||
-                  isPoseModelLoading ||
-                  !!modelError
-                }
-                className="w-full"
-              >
-                {isAILoading || isPoseModelLoading
-                  ? 'Loading AI...'
-                  : modelError
-                    ? 'AI Error - Check Settings'
-                    : 'Start Workout'}
-              </Button>
-            ) : isWorkoutActive ? (
-              <Button
-                onClick={pauseWorkout}
-                variant="secondary"
-                className="w-full"
-              >
-                Pause Workout
-              </Button>
-            ) : (
-              <Button onClick={resumeWorkout} className="w-full">
-                Resume Workout
-              </Button>
-            )}
-
-            {seconds > 0 && (
-              <Button
-                onClick={endWorkout}
-                variant="danger"
-                className="w-full"
-              >
-                End Workout
-              </Button>
-            )}
-          </div>
-
-          {/* Exercise Instructions */}
-          <div className="bg-gray-700 rounded-lg p-4 flex-1">
-            <h3 className="text-lg font-semibold mb-3">
-              Instructions
-            </h3>
-            <ul className="space-y-2 text-sm text-gray-300">
-              {exercise.instructions.map((instruction, index) => (
-                <li key={index} className="flex items-start">
-                  <span className="text-blue-400 mr-2">
-                    {index + 1}.
-                  </span>
-                  <span>{instruction}</span>
-                </li>
-              ))}
-            </ul>
           </div>
         </div>
       </div>
