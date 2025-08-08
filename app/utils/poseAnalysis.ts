@@ -82,17 +82,22 @@ export function processSquatRep(
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
 
-  // Prevent state changes too frequently (debounce)
-  if (timeSinceLastChange < 500) {
+  // Prevent state changes too frequently (debounce) - increased to reduce feedback frequency
+  if (timeSinceLastChange < 800) {
     return state;
   }
+
+  // Add minimum time between form feedback updates (3 seconds)
+  // Using the lastStateChange as a proxy for lastFeedbackTime to avoid modifying interfaces
+  const timeSinceLastFeedback = now - state.lastStateChange;
+  const shouldUpdateFeedback = timeSinceLastFeedback > 3000;
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
   let formFeedback = '';
 
-  // Check for knee alignment issues
-  if (kneeWidth < 0.08) {
+  // Check for knee alignment issues - only provide feedback if it's time to update
+  if (kneeWidth < 0.08 && shouldUpdateFeedback) {
     formFeedback =
       'Keep your knees aligned with your feet, slightly wider stance';
   }
@@ -116,8 +121,8 @@ export function processSquatRep(
       `Squat: Transitioning to DOWN state, hip-knee diff: ${(avgHipY - avgKneeY).toFixed(3)}`,
     );
 
-    // Add form feedback for proper depth
-    if (anklesVisible) {
+    // Add form feedback for proper depth - only if it's time to update
+    if (anklesVisible && shouldUpdateFeedback) {
       const avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
       const hipToAnkleRatio =
         (avgHipY - avgAnkleY) / (avgKneeY - avgAnkleY);
@@ -141,11 +146,14 @@ export function processSquatRep(
     // Provide feedback on the completed rep
     formFeedback = 'Good! Keep your back straight for the next rep';
   } else {
-    // In-between states, provide guidance
-    if (state.currentState === 'up' && avgHipY > avgKneeY - 0.03) {
-      formFeedback = 'Begin lowering into your squat, keep chest up';
-    } else if (state.currentState === 'down') {
-      formFeedback = 'Push through your heels to stand back up';
+    // In-between states, provide guidance - only if it's time to update
+    if (shouldUpdateFeedback) {
+      if (state.currentState === 'up' && avgHipY > avgKneeY - 0.03) {
+        formFeedback =
+          'Begin lowering into your squat, keep chest up';
+      } else if (state.currentState === 'down') {
+        formFeedback = 'Push through your heels to stand back up';
+      }
     }
   }
 
@@ -226,31 +234,38 @@ export function processBicepCurlRep(
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
 
-  // Prevent state changes too frequently (debounce)
-  if (timeSinceLastChange < 300) {
+  // Prevent state changes too frequently (debounce) - increased for smoother detection
+  if (timeSinceLastChange < 500) {
     return state;
   }
+
+  // Add minimum time between form feedback updates (3 seconds)
+  const timeSinceLastFeedback = now - state.lastStateChange;
+  const shouldUpdateFeedback = timeSinceLastFeedback > 3000;
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
   let formFeedback = '';
 
-  // Form feedback based on arm position
-  if (leftArmVisible && rightArmVisible) {
-    const angleDifference = Math.abs(leftAngle - rightAngle);
-    if (angleDifference > 30) {
-      formFeedback = 'Try to keep both arms moving at the same pace';
+  // Form feedback based on arm position - only if it's time to update
+  if (shouldUpdateFeedback) {
+    if (leftArmVisible && rightArmVisible) {
+      const angleDifference = Math.abs(leftAngle - rightAngle);
+      if (angleDifference > 30) {
+        formFeedback =
+          'Try to keep both arms moving at the same pace';
+      }
     }
-  }
 
-  // Check elbow positioning
-  if (leftArmVisible || rightArmVisible) {
-    const elbow = leftArmVisible ? leftElbow : rightElbow;
-    const shoulder = leftArmVisible ? leftShoulder : rightShoulder;
+    // Check elbow positioning
+    if (leftArmVisible || rightArmVisible) {
+      const elbow = leftArmVisible ? leftElbow : rightElbow;
+      const shoulder = leftArmVisible ? leftShoulder : rightShoulder;
 
-    // Check if elbow is wandering forward or backward too much
-    if (Math.abs(elbow.x - shoulder.x) > 0.15) {
-      formFeedback = 'Keep your elbow close to your body';
+      // Check if elbow is wandering forward or backward too much
+      if (Math.abs(elbow.x - shoulder.x) > 0.15) {
+        formFeedback = 'Keep your elbow close to your body';
+      }
     }
   }
 
@@ -266,8 +281,8 @@ export function processBicepCurlRep(
     // Arm is contracted
     newState = 'contracted';
 
-    // Add form feedback for contracted position
-    if (primaryAngle < 40) {
+    // Add form feedback for contracted position - only on major state transitions or timed updates
+    if (primaryAngle < 40 && shouldUpdateFeedback) {
       formFeedback = 'Good contraction! Hold briefly at the top';
     }
   } else if (
@@ -279,16 +294,19 @@ export function processBicepCurlRep(
     newRepCount = state.repCount + 1;
 
     // Add form feedback for extended position
+    // Always provide feedback after completing a rep
     formFeedback = 'Good extension! Control the downward movement';
   } else {
-    // In-between states, provide guidance
-    if (state.currentState === 'extended' && primaryAngle < 110) {
-      formFeedback = 'Continue curling upward';
-    } else if (
-      state.currentState === 'contracted' &&
-      primaryAngle > 100
-    ) {
-      formFeedback = 'Slowly lower your arm';
+    // In-between states, provide guidance - only if it's time to update
+    if (shouldUpdateFeedback) {
+      if (state.currentState === 'extended' && primaryAngle < 110) {
+        formFeedback = 'Continue curling upward';
+      } else if (
+        state.currentState === 'contracted' &&
+        primaryAngle > 100
+      ) {
+        formFeedback = 'Slowly lower your arm';
+      }
     }
   }
 
