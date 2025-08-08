@@ -1,5 +1,5 @@
 import type { Route } from './+types/workout';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '~/components/Button';
 import { LoadingSpinner } from '~/components/LoadingSpinner';
@@ -146,8 +146,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     }
   };
 
-  const { seconds, isRunning, start, pause, reset, formatTime } =
-    useTimer();
+  const { seconds, start, pause, reset, formatTime } = useTimer();
 
   const [currentMessage, setCurrentMessage] = useState(
     'Get ready to start!',
@@ -162,6 +161,12 @@ export default function Workout({ params }: Route.ComponentProps) {
   // Add refs to track previous rep count and feedback to avoid re-announcing
   const prevRepCountRef = useRef(repState.repCount);
   const prevFeedbackRef = useRef<string | null>(null);
+
+  // Speech queue system to manage audio announcements
+  const speechQueueRef = useRef<
+    { text: string; priority: number; rate?: number }[]
+  >([]);
+  const processingQueueRef = useRef(false);
 
   // Add this near the top of your component
   const [disableStreamCleanup, setDisableStreamCleanup] =
@@ -252,14 +257,72 @@ export default function Workout({ params }: Route.ComponentProps) {
     canvasResizedRef.current = false;
   }, [stream]);
 
-  // useEffect for text-to-speech feedback
+  // Process the speech queue in order of priority
+  const processSpeechQueue = useCallback(() => {
+    if (
+      !isAudioEnabled ||
+      speechQueueRef.current.length === 0 ||
+      processingQueueRef.current ||
+      isSpeaking
+    ) {
+      return;
+    }
+
+    processingQueueRef.current = true;
+
+    // Sort by priority (higher number = higher priority)
+    speechQueueRef.current.sort((a, b) => b.priority - a.priority);
+
+    // Take the highest priority item
+    const nextSpeech = speechQueueRef.current.shift();
+
+    if (nextSpeech) {
+      speak({
+        text: nextSpeech.text,
+        rate: nextSpeech.rate || 1,
+      });
+
+      // Check queue again after speech completes with a proper delay between announcements
+      const checkQueueAgain = () => {
+        processingQueueRef.current = false;
+        if (speechQueueRef.current.length > 0 && !isSpeaking) {
+          // Add a delay between announcements for better clarity
+          setTimeout(() => {
+            processSpeechQueue();
+          }, 800); // Longer delay between announcements for better separation
+        }
+      };
+
+      setTimeout(checkQueueAgain, 100); // Small delay to ensure isSpeaking has updated
+    } else {
+      processingQueueRef.current = false;
+    }
+  }, [speak, isAudioEnabled, isSpeaking]);
+
+  // Helper function to add items to the speech queue
+  const queueSpeech = useCallback(
+    (text: string, priority: number, rate?: number) => {
+      if (!text) return;
+
+      // Add to queue
+      speechQueueRef.current.push({ text, priority, rate });
+
+      // Start processing if not already doing so
+      if (!processingQueueRef.current && !isSpeaking) {
+        processSpeechQueue();
+      }
+    },
+    [processSpeechQueue, isSpeaking],
+  );
+
+  // useEffect for text-to-speech feedback with queue system
   useEffect(() => {
     if (!isWorkoutActive || !isAudioEnabled) return;
 
     // Announce a new repetition when the count increases
     if (repState.repCount > prevRepCountRef.current) {
-      // Only pass parameters supported by the hook
-      speak({ text: `${repState.repCount}` });
+      // Rep count has higher priority (10) than form feedback (5)
+      queueSpeech(`${repState.repCount}`, 10);
     }
     prevRepCountRef.current = repState.repCount;
 
@@ -269,10 +332,8 @@ export default function Workout({ params }: Route.ComponentProps) {
       currentFeedback &&
       currentFeedback !== prevFeedbackRef.current
     ) {
-      // Use a small delay to avoid clashing with the rep count announcement
-      setTimeout(() => {
-        speak({ text: currentFeedback, rate: 1 });
-      }, 300);
+      // Form feedback has lower priority than rep count
+      queueSpeech(currentFeedback, 5, 1);
     }
     prevFeedbackRef.current = currentFeedback;
   }, [
@@ -280,9 +341,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     getFormFeedback,
     isWorkoutActive,
     isAudioEnabled,
-    speak,
-    selectedVoiceName,
-    voices,
+    queueSpeech,
   ]);
 
   // Make sure to reset the refs when the counter is reset
@@ -290,6 +349,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     resetCounter();
     prevRepCountRef.current = 0;
     prevFeedbackRef.current = null;
+    speechQueueRef.current = []; // Clear any queued speech
   };
   const startWorkout = async () => {
     // Temporarily disable stream cleanup to prevent issues
