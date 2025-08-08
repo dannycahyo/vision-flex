@@ -35,3 +35,22 @@ export interface RepCounterState {
   lastStateChange: number;
   formFeedback: string | null;
 }
+
+export type FeedbackPriority =
+  | 'critical'
+  | 'important'
+  | 'helpful'
+  | 'encouragement';
+
+export interface FormFeedback {
+  message: string;
+  priority: FeedbackPriority;
+  timestamp: number;
+  minDisplayDuration?: number; // minimum time in ms this feedback should be shown
+}
+
+export interface EnhancedRepCounterState extends RepCounterState {
+  activeFeedback: FormFeedback | null;
+  feedbackHistory: FormFeedback[];
+  lastFeedbackChange: number;
+}

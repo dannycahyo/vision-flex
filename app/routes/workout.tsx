@@ -7,6 +7,10 @@ import { useWebcam } from '~/hooks/useWebcam';
 import { useTimer } from '~/hooks/useTimer';
 import { usePoseDetection } from '~/hooks/usePoseDetection';
 import { useRepCounting } from '~/hooks/useRepCounting';
+import {
+  useRepCountingWithTTS,
+  useTTSFeedback,
+} from '~/hooks/useTTSFeedback';
 import { useAnimationLoop } from '~/hooks/useAnimationLoop';
 import { getExerciseById } from '~/constants/exercises';
 import { drawPose, resizeCanvas } from '~/utils/canvasUtils';
@@ -23,6 +27,22 @@ export function meta({ params }: Route.MetaArgs) {
   ];
 }
 
+// Helper function to get priority color
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case 'critical':
+      return 'text-red-400';
+    case 'important':
+      return 'text-orange-400';
+    case 'helpful':
+      return 'text-blue-400';
+    case 'encouragement':
+      return 'text-green-400';
+    default:
+      return 'text-gray-400';
+  }
+};
+
 export default function Workout({ params }: Route.ComponentProps) {
   const navigate = useNavigate();
   const { exercise: exerciseId } = params;
@@ -36,7 +56,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     hasPermission,
     requestPermission,
     stopStream,
-    ensureStream, // Add the new function
+    ensureStream,
   } = useWebcam();
 
   const {
@@ -46,8 +66,53 @@ export default function Workout({ params }: Route.ComponentProps) {
     loadModel,
   } = usePoseDetection();
 
-  const { repState, processFrame, resetCounter, getFormFeedback } =
-    useRepCounting(exercise!);
+  // State declarations
+  const [currentMessage, setCurrentMessage] = useState(
+    'Get ready to start!',
+  );
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [isAILoading, setIsAILoading] = useState(false);
+  const [ttsEnabled, setTTSEnabled] = useState(true); // TTS control state
+  const [repAnnouncementsEnabled, setRepAnnouncementsEnabled] =
+    useState(true); // Rep announcements control
+  const [formFeedbackEnabled, setFormFeedbackEnabled] =
+    useState(true); // Form feedback control
+
+  // Create TTS instance first
+  const tts = useTTSFeedback({
+    enabled: ttsEnabled,
+    rate: 1,
+    volume: 1,
+    pitch: 1,
+    voice: 'en',
+    announceReps: repAnnouncementsEnabled,
+    announceFormFeedback: formFeedbackEnabled,
+  });
+
+  // Enhanced rep counting with TTS
+  const baseRepCountingHook = useRepCounting(exercise!, {
+    enableEnhancedFeedback: true,
+    minFeedbackStability: 1500, // 1.5 seconds before TTS kicks in
+    onRepCompleted: (repCount: number, exerciseName: string) => {
+      // Announce rep completion
+      if (ttsEnabled && repAnnouncementsEnabled) {
+        tts.announceRep(repCount, exerciseName);
+      }
+    },
+  });
+
+  const repCountingWithTTS = useRepCountingWithTTS(
+    baseRepCountingHook,
+    {
+      enabled: ttsEnabled, // Controlled by user preference
+      rate: 1,
+      volume: 1,
+      pitch: 1,
+      voice: 'en',
+      announceReps: repAnnouncementsEnabled,
+      announceFormFeedback: formFeedbackEnabled,
+    },
+  );
 
   const { startLoop, stopLoop } = useAnimationLoop();
 
@@ -83,17 +148,17 @@ export default function Workout({ params }: Route.ComponentProps) {
           );
           const pose = poses[0];
 
-          // Process the pose for rep counting
-          processFrame(poses);
+          // Process the pose for rep counting (this will handle feedback internally)
+          repCountingWithTTS.processFrame(poses);
 
           // Update message based on pose detection
           if (isWorkoutActive) {
-            const feedback = getFormFeedback();
+            const feedback = repCountingWithTTS.getFormFeedback();
             if (feedback) {
               setCurrentMessage(feedback);
             } else {
               setCurrentMessage(
-                `Keep going! Reps: ${repState.repCount}`,
+                `Keep going! Reps: ${repCountingWithTTS.repState.repCount}`,
               );
             }
           }
@@ -143,12 +208,6 @@ export default function Workout({ params }: Route.ComponentProps) {
   const { seconds, isRunning, start, pause, reset, formatTime } =
     useTimer();
 
-  const [currentMessage, setCurrentMessage] = useState(
-    'Get ready to start!',
-  );
-  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
-  const [isAILoading, setIsAILoading] = useState(false);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const startTimeRef = useRef<Date | null>(null);
   const canvasResizedRef = useRef<boolean>(false);
@@ -192,7 +251,7 @@ export default function Workout({ params }: Route.ComponentProps) {
 
     const workoutData: WorkoutSession = {
       exercise: exercise!,
-      reps: repState.repCount,
+      reps: repCountingWithTTS.repState.repCount,
       duration: seconds,
       startTime: startTimeRef.current || endTime,
       endTime,
@@ -241,6 +300,7 @@ export default function Workout({ params }: Route.ComponentProps) {
   useEffect(() => {
     canvasResizedRef.current = false;
   }, [stream]);
+
   const startWorkout = async () => {
     // Temporarily disable stream cleanup to prevent issues
     setDisableStreamCleanup(true);
@@ -282,7 +342,7 @@ export default function Workout({ params }: Route.ComponentProps) {
       }
 
       // Reset the rep counter for new workout
-      resetCounter();
+      repCountingWithTTS.resetCounter();
 
       // Start the animation loop with pose detection
       startLoop(processPoseData);
@@ -371,15 +431,103 @@ export default function Workout({ params }: Route.ComponentProps) {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">{exercise.name}</h1>
-            <p className="text-gray-300">AI-Guided Workout</p>
+            <p className="text-gray-300">
+              AI-Guided Workout with Voice Feedback
+            </p>
           </div>
-          <Button
-            variant="secondary"
-            onClick={() => navigate('/')}
-            className="text-gray-900"
-          >
-            Exit Workout
-          </Button>
+          <div className="flex items-center space-x-4">
+            {/* TTS Controls */}
+            <div className="flex items-center space-x-2">
+              <span className="text-sm">Voice:</span>
+              <button
+                onClick={() => {
+                  setTTSEnabled(!ttsEnabled);
+                  if (repCountingWithTTS.tts.isSpeaking) {
+                    repCountingWithTTS.tts.stopSpeaking();
+                  }
+                }}
+                className={`px-3 py-1 rounded text-sm transition-colors ${
+                  ttsEnabled && repCountingWithTTS.tts.isSupported
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                }`}
+                disabled={!repCountingWithTTS.tts.isSupported}
+                title={
+                  repCountingWithTTS.tts.isSupported
+                    ? ttsEnabled
+                      ? 'Disable voice feedback'
+                      : 'Enable voice feedback'
+                    : 'Voice feedback not supported in this browser'
+                }
+              >
+                {ttsEnabled ? '🔊 ON' : '🔇 OFF'}
+              </button>
+
+              {/* TTS Mode Controls */}
+              {ttsEnabled && repCountingWithTTS.tts.isSupported && (
+                <>
+                  {/* Form Feedback Toggle */}
+                  <button
+                    onClick={() =>
+                      setFormFeedbackEnabled(!formFeedbackEnabled)
+                    }
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      formFeedbackEnabled
+                        ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                        : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                    }`}
+                    title={
+                      formFeedbackEnabled
+                        ? 'Disable form feedback announcements'
+                        : 'Enable form feedback announcements'
+                    }
+                  >
+                    {formFeedbackEnabled ? '📋 Form' : '📋 No Form'}
+                  </button>
+
+                  {/* Rep Announcements Toggle */}
+                  <button
+                    onClick={() =>
+                      setRepAnnouncementsEnabled(
+                        !repAnnouncementsEnabled,
+                      )
+                    }
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      repAnnouncementsEnabled
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                    }`}
+                    title={
+                      repAnnouncementsEnabled
+                        ? 'Disable rep count announcements'
+                        : 'Enable rep count announcements'
+                    }
+                  >
+                    {repAnnouncementsEnabled
+                      ? '🔢 Reps'
+                      : '🔢 No Reps'}
+                  </button>
+                </>
+              )}
+
+              {repCountingWithTTS.tts.isSpeaking && (
+                <button
+                  onClick={repCountingWithTTS.tts.stopSpeaking}
+                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
+                  title="Stop current speech"
+                >
+                  ⏹ Stop
+                </button>
+              )}
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/')}
+              className="text-gray-900"
+            >
+              Exit Workout
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -454,6 +602,14 @@ export default function Workout({ params }: Route.ComponentProps) {
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                     <span>AI Active</span>
+                    {repCountingWithTTS.tts.isSpeaking && (
+                      <>
+                        <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                        <span className="text-blue-400 text-xs">
+                          Speaking
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -463,7 +619,7 @@ export default function Workout({ params }: Route.ComponentProps) {
                 <div className="absolute top-4 right-16 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-400">
-                      {repState.repCount}
+                      {repCountingWithTTS.repState.repCount}
                     </div>
                     <div className="text-xs text-gray-300">REPS</div>
                   </div>
@@ -507,7 +663,7 @@ export default function Workout({ params }: Route.ComponentProps) {
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-gray-700 rounded-lg p-4 text-center">
                 <div className="text-3xl font-bold text-blue-400">
-                  {repState.repCount}
+                  {repCountingWithTTS.repState.repCount}
                 </div>
                 <div className="text-sm text-gray-300">Reps</div>
               </div>
@@ -528,14 +684,143 @@ export default function Workout({ params }: Route.ComponentProps) {
             {/* Form Feedback */}
             {isWorkoutActive && (
               <div className="bg-gray-700 rounded-lg p-4 mb-6">
-                <h3 className="text-lg font-semibold mb-2">
-                  Form Feedback
-                </h3>
-                <p className="text-yellow-400">
-                  {getFormFeedback() || 'Keep going!'}
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold">
+                    Smart Feedback
+                  </h3>
+                  {repCountingWithTTS.tts.isSpeaking && (
+                    <div className="flex items-center text-green-400 text-sm">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
+                      Speaking
+                    </div>
+                  )}
+                </div>
+
+                {(() => {
+                  const currentFeedback =
+                    repCountingWithTTS.getCurrentFeedback();
+                  if (currentFeedback) {
+                    const isStable =
+                      repCountingWithTTS.isFeedbackStable();
+                    const timeRemaining = Math.max(
+                      0,
+                      (currentFeedback.minDisplayDuration || 0) -
+                        (Date.now() - currentFeedback.timestamp),
+                    );
+
+                    return (
+                      <div className="space-y-2">
+                        <p
+                          className={`text-sm font-medium ${getPriorityColor(currentFeedback.priority)}`}
+                        >
+                          {currentFeedback.message}
+                        </p>
+
+                        <div className="flex items-center justify-between text-xs text-gray-400">
+                          <span className="capitalize">
+                            Priority: {currentFeedback.priority}
+                          </span>
+                          {isStable ? (
+                            <span className="text-green-400">
+                              ✓ Stable
+                            </span>
+                          ) : (
+                            <span>
+                              Stabilizing... (
+                              {Math.ceil(timeRemaining / 1000)}s)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p className="text-gray-400 text-sm">
+                      {repCountingWithTTS.getFormFeedback() ||
+                        'Monitoring your form...'}
+                    </p>
+                  );
+                })()}
               </div>
             )}
+
+            {/* TTS Status Panel */}
+            <div className="bg-gray-700 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-semibold mb-2">
+                Voice Assistant
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Status:</span>
+                  <span
+                    className={
+                      repCountingWithTTS.tts.isSupported
+                        ? 'text-green-400'
+                        : 'text-red-400'
+                    }
+                  >
+                    {repCountingWithTTS.tts.isSupported
+                      ? 'Available'
+                      : 'Not Supported'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Enabled:</span>
+                  <span
+                    className={
+                      ttsEnabled ? 'text-green-400' : 'text-gray-400'
+                    }
+                  >
+                    {ttsEnabled ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Speaking:</span>
+                  <span
+                    className={
+                      repCountingWithTTS.tts.isSpeaking
+                        ? 'text-blue-400'
+                        : 'text-gray-400'
+                    }
+                  >
+                    {repCountingWithTTS.tts.isSpeaking ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Form feedback:</span>
+                  <span
+                    className={
+                      formFeedbackEnabled && ttsEnabled
+                        ? 'text-green-400'
+                        : 'text-gray-400'
+                    }
+                  >
+                    {formFeedbackEnabled && ttsEnabled ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Rep announcements:</span>
+                  <span
+                    className={
+                      repAnnouncementsEnabled && ttsEnabled
+                        ? 'text-green-400'
+                        : 'text-gray-400'
+                    }
+                  >
+                    {repAnnouncementsEnabled && ttsEnabled
+                      ? 'Yes'
+                      : 'No'}
+                  </span>
+                </div>
+                {!repCountingWithTTS.tts.isSupported && (
+                  <p className="text-red-300 text-xs mt-2">
+                    Voice feedback requires a modern browser with
+                    speech synthesis support.
+                  </p>
+                )}
+              </div>
+            </div>
 
             {/* AI Model Error */}
             {modelError && (

@@ -2,7 +2,15 @@ import type {
   Pose,
   RepCounterState,
   ExerciseState,
+  EnhancedRepCounterState,
+  FormFeedback,
 } from '~/types/exercise';
+import {
+  createFeedback,
+  updateFeedbackState,
+  getFeedbackFromMap,
+  shouldExpireFeedback,
+} from './feedbackManager';
 
 /**
  * Calculate angle between three points using law of cosines
@@ -32,12 +40,20 @@ export function calculateAngle(
 }
 
 /**
- * Squat rep counter logic
+ * Squat rep counter logic with enhanced feedback management
  */
 export function processSquatRep(
   pose: Pose,
   state: RepCounterState,
 ): RepCounterState {
+  // Convert to enhanced state if needed
+  const enhancedState: EnhancedRepCounterState = {
+    ...state,
+    activeFeedback: null,
+    feedbackHistory: [],
+    lastFeedbackChange: Date.now(),
+  };
+
   // MoveNet keypoint indices
   const LEFT_HIP = 11;
   const RIGHT_HIP = 12;
@@ -61,10 +77,19 @@ export function processSquatRep(
     rightKnee.confidence < 0.5
   ) {
     console.log('Squat: Key body points not visible');
+    const visibilityFeedback = getFeedbackFromMap(
+      'squats',
+      'visibility',
+    );
+    const updatedState = updateFeedbackState(
+      enhancedState,
+      visibilityFeedback,
+    );
     return {
-      ...state,
-      formFeedback:
-        'Position yourself so your hips and knees are visible',
+      currentState: updatedState.currentState,
+      repCount: updatedState.repCount,
+      lastStateChange: updatedState.lastStateChange,
+      formFeedback: updatedState.formFeedback,
     };
   }
 
@@ -84,17 +109,23 @@ export function processSquatRep(
 
   // Prevent state changes too frequently (debounce)
   if (timeSinceLastChange < 500) {
+    // Check if current feedback should expire
+    if (shouldExpireFeedback(enhancedState.activeFeedback)) {
+      return {
+        ...state,
+        formFeedback: null,
+      };
+    }
     return state;
   }
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
-  let formFeedback = '';
+  let potentialFeedback: FormFeedback | null = null;
 
-  // Check for knee alignment issues
+  // Prioritize critical form issues first
   if (kneeWidth < 0.08) {
-    formFeedback =
-      'Keep your knees aligned with your feet, slightly wider stance';
+    potentialFeedback = getFeedbackFromMap('squats', 'stance');
   }
 
   // Improved thresholds for squat detection
@@ -116,17 +147,24 @@ export function processSquatRep(
       `Squat: Transitioning to DOWN state, hip-knee diff: ${(avgHipY - avgKneeY).toFixed(3)}`,
     );
 
-    // Add form feedback for proper depth
-    if (anklesVisible) {
+    // Add form feedback for proper depth (only if no critical feedback)
+    if (!potentialFeedback && anklesVisible) {
       const avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
       const hipToAnkleRatio =
         (avgHipY - avgAnkleY) / (avgKneeY - avgAnkleY);
 
       if (hipToAnkleRatio < 0.7) {
-        formFeedback =
-          'Try to squat deeper, aim for thighs parallel to ground';
+        potentialFeedback = getFeedbackFromMap(
+          'squats',
+          'depth',
+          'shallow',
+        );
       } else {
-        formFeedback = 'Good depth! Hold for a moment at the bottom';
+        potentialFeedback = getFeedbackFromMap(
+          'squats',
+          'depth',
+          'good',
+        );
       }
     }
   } else if (
@@ -138,33 +176,63 @@ export function processSquatRep(
     newRepCount = state.repCount + 1;
     console.log(`Squat rep completed! Count: ${newRepCount}`);
 
-    // Provide feedback on the completed rep
-    formFeedback = 'Good! Keep your back straight for the next rep';
+    // Provide feedback on the completed rep (only if no critical feedback)
+    if (!potentialFeedback) {
+      potentialFeedback = getFeedbackFromMap(
+        'squats',
+        'movement',
+        'completed',
+      );
+    }
   } else {
-    // In-between states, provide guidance
-    if (state.currentState === 'up' && avgHipY > avgKneeY - 0.03) {
-      formFeedback = 'Begin lowering into your squat, keep chest up';
-    } else if (state.currentState === 'down') {
-      formFeedback = 'Push through your heels to stand back up';
+    // In-between states, provide guidance (only if no critical feedback)
+    if (!potentialFeedback) {
+      if (state.currentState === 'up' && avgHipY > avgKneeY - 0.03) {
+        potentialFeedback = getFeedbackFromMap(
+          'squats',
+          'movement',
+          'descending',
+        );
+      } else if (state.currentState === 'down') {
+        potentialFeedback = getFeedbackFromMap(
+          'squats',
+          'movement',
+          'ascending',
+        );
+      }
     }
   }
+
+  // Update the enhanced state with potential feedback
+  const updatedEnhancedState = updateFeedbackState(
+    enhancedState,
+    potentialFeedback,
+  );
 
   return {
     currentState: newState as ExerciseState,
     repCount: newRepCount,
     lastStateChange:
       newState !== state.currentState ? now : state.lastStateChange,
-    formFeedback: formFeedback || state.formFeedback,
+    formFeedback: updatedEnhancedState.formFeedback,
   };
 }
 
 /**
- * Bicep curl rep counter logic & form feedback
+ * Bicep curl rep counter logic with enhanced feedback management
  */
 export function processBicepCurlRep(
   pose: Pose,
   state: RepCounterState,
 ): RepCounterState {
+  // Convert to enhanced state if needed
+  const enhancedState: EnhancedRepCounterState = {
+    ...state,
+    activeFeedback: null,
+    feedbackHistory: [],
+    lastFeedbackChange: Date.now(),
+  };
+
   // MoveNet keypoint indices
   const LEFT_SHOULDER = 5;
   const LEFT_ELBOW = 7;
@@ -193,9 +261,19 @@ export function processBicepCurlRep(
     rightWrist.confidence > 0.5;
 
   if (!leftArmVisible && !rightArmVisible) {
+    const visibilityFeedback = getFeedbackFromMap(
+      'bicepCurls',
+      'visibility',
+    );
+    const updatedState = updateFeedbackState(
+      enhancedState,
+      visibilityFeedback,
+    );
     return {
-      ...state,
-      formFeedback: 'Position yourself so your arms are visible',
+      currentState: updatedState.currentState,
+      repCount: updatedState.repCount,
+      lastStateChange: updatedState.lastStateChange,
+      formFeedback: updatedState.formFeedback,
     };
   }
 
@@ -228,29 +306,40 @@ export function processBicepCurlRep(
 
   // Prevent state changes too frequently (debounce)
   if (timeSinceLastChange < 300) {
+    // Check if current feedback should expire
+    if (shouldExpireFeedback(enhancedState.activeFeedback)) {
+      return {
+        ...state,
+        formFeedback: null,
+      };
+    }
     return state;
   }
 
   let newState = state.currentState;
   let newRepCount = state.repCount;
-  let formFeedback = '';
+  let potentialFeedback: FormFeedback | null = null;
 
-  // Form feedback based on arm position
+  // Prioritize critical form issues first
+  // Form feedback based on arm synchronization
   if (leftArmVisible && rightArmVisible) {
     const angleDifference = Math.abs(leftAngle - rightAngle);
     if (angleDifference > 30) {
-      formFeedback = 'Try to keep both arms moving at the same pace';
+      potentialFeedback = getFeedbackFromMap('bicepCurls', 'armSync');
     }
   }
 
-  // Check elbow positioning
-  if (leftArmVisible || rightArmVisible) {
+  // Check elbow positioning (higher priority than arm sync)
+  if (!potentialFeedback && (leftArmVisible || rightArmVisible)) {
     const elbow = leftArmVisible ? leftElbow : rightElbow;
     const shoulder = leftArmVisible ? leftShoulder : rightShoulder;
 
     // Check if elbow is wandering forward or backward too much
     if (Math.abs(elbow.x - shoulder.x) > 0.15) {
-      formFeedback = 'Keep your elbow close to your body';
+      potentialFeedback = getFeedbackFromMap(
+        'bicepCurls',
+        'elbowPosition',
+      );
     }
   }
 
@@ -266,9 +355,13 @@ export function processBicepCurlRep(
     // Arm is contracted
     newState = 'contracted';
 
-    // Add form feedback for contracted position
-    if (primaryAngle < 40) {
-      formFeedback = 'Good contraction! Hold briefly at the top';
+    // Add form feedback for contracted position (only if no critical feedback)
+    if (!potentialFeedback && primaryAngle < 40) {
+      potentialFeedback = getFeedbackFromMap(
+        'bicepCurls',
+        'movement',
+        'topPosition',
+      );
     }
   } else if (
     state.currentState === 'contracted' &&
@@ -278,25 +371,47 @@ export function processBicepCurlRep(
     newState = 'extended';
     newRepCount = state.repCount + 1;
 
-    // Add form feedback for extended position
-    formFeedback = 'Good extension! Control the downward movement';
+    // Add form feedback for extended position (only if no critical feedback)
+    if (!potentialFeedback) {
+      potentialFeedback = getFeedbackFromMap(
+        'bicepCurls',
+        'movement',
+        'bottomPosition',
+      );
+    }
   } else {
-    // In-between states, provide guidance
-    if (state.currentState === 'extended' && primaryAngle < 110) {
-      formFeedback = 'Continue curling upward';
-    } else if (
-      state.currentState === 'contracted' &&
-      primaryAngle > 100
-    ) {
-      formFeedback = 'Slowly lower your arm';
+    // In-between states, provide guidance (only if no critical feedback)
+    if (!potentialFeedback) {
+      if (state.currentState === 'extended' && primaryAngle < 110) {
+        potentialFeedback = getFeedbackFromMap(
+          'bicepCurls',
+          'movement',
+          'contracting',
+        );
+      } else if (
+        state.currentState === 'contracted' &&
+        primaryAngle > 100
+      ) {
+        potentialFeedback = getFeedbackFromMap(
+          'bicepCurls',
+          'movement',
+          'extending',
+        );
+      }
     }
   }
+
+  // Update the enhanced state with potential feedback
+  const updatedEnhancedState = updateFeedbackState(
+    enhancedState,
+    potentialFeedback,
+  );
 
   return {
     currentState: newState as ExerciseState,
     repCount: newRepCount,
     lastStateChange:
       newState !== state.currentState ? now : state.lastStateChange,
-    formFeedback: formFeedback || null, // Reset feedback if no new feedback
+    formFeedback: updatedEnhancedState.formFeedback,
   };
 }
