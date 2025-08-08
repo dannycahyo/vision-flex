@@ -11,6 +11,37 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
+const getPerformanceMessage = (
+  reps: number,
+): { message: string; color: string } => {
+  if (reps >= 20) {
+    return {
+      message: "Outstanding! You're crushing it! 🔥",
+      color: 'text-green-600',
+    };
+  } else if (reps >= 15) {
+    return {
+      message: 'Great job! Keep up the excellent work! 💪',
+      color: 'text-blue-600',
+    };
+  } else if (reps >= 10) {
+    return {
+      message: "Good effort! You're making progress! 👍",
+      color: 'text-yellow-600',
+    };
+  } else if (reps >= 5) {
+    return {
+      message: 'Nice start! Every rep counts! 🌟',
+      color: 'text-orange-600',
+    };
+  } else {
+    return {
+      message: 'Every journey starts with a single step! 🚀',
+      color: 'text-purple-600',
+    };
+  }
+};
+
 export default function Summary() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,37 +65,6 @@ export default function Summary() {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds}s`;
-  };
-
-  const getPerformanceMessage = (
-    reps: number,
-  ): { message: string; color: string } => {
-    if (reps >= 20) {
-      return {
-        message: "Outstanding! You're crushing it! 🔥",
-        color: 'text-green-600',
-      };
-    } else if (reps >= 15) {
-      return {
-        message: 'Great job! Keep up the excellent work! 💪',
-        color: 'text-blue-600',
-      };
-    } else if (reps >= 10) {
-      return {
-        message: "Good effort! You're making progress! 👍",
-        color: 'text-yellow-600',
-      };
-    } else if (reps >= 5) {
-      return {
-        message: 'Nice start! Every rep counts! 🌟',
-        color: 'text-orange-600',
-      };
-    } else {
-      return {
-        message: 'Every journey starts with a single step! 🚀',
-        color: 'text-purple-600',
-      };
-    }
   };
 
   const performance = getPerformanceMessage(workoutData.reps);
