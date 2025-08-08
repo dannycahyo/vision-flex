@@ -262,32 +262,8 @@ export default function Workout({ params }: Route.ComponentProps) {
     setCurrentMessage('Loading AI model...');
 
     try {
-      // Debug: Check stream status before model loading
-      console.log(
-        'Before model loading - permission:',
-        hasPermission,
-        'stream:',
-        !!stream,
-        'video element:',
-        !!videoRef.current,
-        'video playing:',
-        !videoRef.current?.paused,
-      );
-
       // Load the pose detection model
       await loadModel();
-
-      // Debug: Check stream status after model loading
-      console.log(
-        'After model loading - permission:',
-        hasPermission,
-        'stream:',
-        !!stream,
-        'video element:',
-        !!videoRef.current,
-        'video playing:',
-        !videoRef.current?.paused,
-      );
 
       // Check if model loaded successfully
       if (modelError) {
