@@ -193,7 +193,6 @@ export function processBicepCurlRep(
     rightWrist.confidence > 0.5;
 
   if (!leftArmVisible && !rightArmVisible) {
-    console.log('Bicep curl: Neither arm is fully visible');
     return {
       ...state,
       formFeedback: 'Position yourself so your arms are visible',
@@ -223,10 +222,6 @@ export function processBicepCurlRep(
     primaryAngle = rightAngle;
     activeArm = 'right';
   }
-
-  console.log(
-    `Bicep curl: Using ${activeArm} arm, angle: ${primaryAngle.toFixed(1)}°, current state: ${state.currentState}`,
-  );
 
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
@@ -263,11 +258,6 @@ export function processBicepCurlRep(
   const CONTRACTED_ANGLE = 80; // More forgiving - was 70
   const EXTENDED_ANGLE = 140; // More forgiving - was 150
 
-  // Log the state and angle more clearly
-  console.log(
-    `Current state: ${state.currentState}, Angle: ${primaryAngle.toFixed(1)}, Threshold check: ${primaryAngle < CONTRACTED_ANGLE ? 'CURL DETECTED' : 'NOT CURLED'}`,
-  );
-
   // Check for state transitions
   if (
     state.currentState === 'extended' &&
@@ -275,11 +265,6 @@ export function processBicepCurlRep(
   ) {
     // Arm is contracted
     newState = 'contracted';
-    console.log(
-      `Bicep curl state change: extended → contracted (${primaryAngle.toFixed(
-        1,
-      )}°)`,
-    );
 
     // Add form feedback for contracted position
     if (primaryAngle < 40) {
@@ -292,11 +277,6 @@ export function processBicepCurlRep(
     // Arm is extended - complete rep
     newState = 'extended';
     newRepCount = state.repCount + 1;
-    console.log(
-      `Bicep curl rep completed! Count: ${newRepCount}, angle: ${primaryAngle.toFixed(
-        1,
-      )}°`,
-    );
 
     // Add form feedback for extended position
     formFeedback = 'Good extension! Control the downward movement';
