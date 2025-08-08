@@ -4,10 +4,8 @@ import type {
   RepCounterState,
   Exercise,
 } from '~/types/exercise';
-import {
-  processSquatRep,
-  processBicepCurlRep,
-} from '~/utils/poseAnalysis';
+import { processBicepCurlRep } from '~/utils/poseAnalysis/processBicepCurlRep';
+import { processSquatRep } from '~/utils/poseAnalysis/processSquatRep';
 
 interface UseRepCountingReturn {
   repState: RepCounterState;
@@ -34,7 +32,6 @@ export function useRepCounting(
       setRepState((currentRepState) => {
         let nextState: RepCounterState;
 
-        // Process based on exercise type
         switch (exercise.id) {
           case 'squats':
             nextState = processSquatRep(pose, currentRepState);
