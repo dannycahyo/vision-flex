@@ -13,7 +13,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const baseClasses =
-    'font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2';
+    'font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer';
 
   const variantClasses = {
     primary:

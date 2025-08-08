@@ -18,27 +18,23 @@ export function useWebcam(): UseWebcamReturn {
   const [error, setError] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
 
-  // Track if permission was previously granted but stream is stopped
   const [permissionGranted, setPermissionGranted] = useState(false);
 
   const requestPermission = async () => {
-    // Prevent multiple simultaneous requests
     if (isLoading) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Request a larger, more visible stream
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 }, // Increased from 640
-          height: { ideal: 720 }, // Increased from 480
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
           facingMode: 'user',
         },
       });
 
-      // Log track information
       const videoTrack = mediaStream.getVideoTracks()[0];
       console.log(
         'Video track constraints:',
@@ -48,7 +44,7 @@ export function useWebcam(): UseWebcamReturn {
 
       setStream(mediaStream);
       setHasPermission(true);
-      setPermissionGranted(true); // Remember that permission was granted
+      setPermissionGranted(true);
     } catch (err) {
       console.error('Webcam access error:', err);
       const errorMessage =
@@ -61,16 +57,6 @@ export function useWebcam(): UseWebcamReturn {
       setIsLoading(false);
     }
   };
-
-  // Effect to connect stream to video element when both are available
-  // This is now managed in the component directly, so we'll make this one
-  // simpler to avoid conflicting behaviors
-  useEffect(() => {
-    if (stream && videoRef.current && !videoRef.current.srcObject) {
-      console.log('Setting stream from useWebcam hook');
-      videoRef.current.srcObject = stream;
-    }
-  }, [stream]);
 
   // Make stopStream stable by using useCallback
   const stopStream = useCallback(() => {
@@ -91,8 +77,6 @@ export function useWebcam(): UseWebcamReturn {
     }
   }, [stream, permissionGranted]);
 
-  // New function to ensure we have an active stream when needed
-  // Make ensureStream stable by using useCallback
   const ensureStream = useCallback(async (): Promise<boolean> => {
     if (stream) {
       // We already have an active stream
@@ -106,8 +90,8 @@ export function useWebcam(): UseWebcamReturn {
         const mediaStream = await navigator.mediaDevices.getUserMedia(
           {
             video: {
-              width: { ideal: 1280 }, // Increased from 640
-              height: { ideal: 720 }, // Increased from 480
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
               facingMode: 'user',
             },
           },
@@ -132,6 +116,16 @@ export function useWebcam(): UseWebcamReturn {
     setStream,
     setHasPermission,
   ]);
+
+  // Effect to connect stream to video element when both are available
+  // This is now managed in the component directly, so we'll make this one
+  // simpler to avoid conflicting behaviors
+  useEffect(() => {
+    if (stream && videoRef.current && !videoRef.current.srcObject) {
+      console.log('Setting stream from useWebcam hook');
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
 
   // Only run this cleanup when the component using useWebcam unmounts
   // not on every stream change

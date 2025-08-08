@@ -19,7 +19,6 @@ export function usePoseDetection(): UsePoseDetectionReturn {
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
 
   const loadModel = useCallback(async () => {
-    // Prevent loading if already loading or loaded
     if (isModelLoading || detector) {
       console.log('Model already loading or loaded');
       return;
