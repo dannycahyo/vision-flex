@@ -141,21 +141,12 @@ export function processSquatRep(
       avgKneeY = 0.6; // Neutral position
     }
   } catch (e) {
-    console.error(
-      'Error calculating positions for squat analysis:',
-      e,
-    );
+    console.error('Error calculating positions:', e);
     hasReliablePositions = false;
-
-    // Safe fallback values
     avgHipY = 0.5; // Neutral position
     avgKneeY = 0.6; // Neutral position
     kneeWidth = 0.15;
   }
-
-  console.log(
-    `Squat: Hip height: ${avgHipY.toFixed(3)}, Knee height: ${avgKneeY.toFixed(3)}, Knee width: ${kneeWidth.toFixed(3)}, Reliable: ${hasReliablePositions}`,
-  );
 
   const now = Date.now();
   const timeSinceLastChange = now - state.lastStateChange;
@@ -300,7 +291,7 @@ export function processSquatRep(
 }
 
 /**
- * Bicep curl rep counter logic & form feedback
+ * Bicep curl rep counter logic
  */
 export function processBicepCurlRep(
   pose: Pose,
@@ -314,7 +305,6 @@ export function processBicepCurlRep(
   const RIGHT_ELBOW = 8;
   const RIGHT_WRIST = 10;
 
-  // Track both arms for better detection
   const leftShoulder = pose.keypoints[LEFT_SHOULDER];
   const leftElbow = pose.keypoints[LEFT_ELBOW];
   const leftWrist = pose.keypoints[LEFT_WRIST];
@@ -526,6 +516,6 @@ export function processBicepCurlRep(
     repCount: newRepCount,
     lastStateChange:
       newState !== state.currentState ? now : state.lastStateChange,
-    formFeedback: formFeedback || null, // Reset feedback if no new feedback
+    formFeedback: formFeedback || null,
   };
 }
