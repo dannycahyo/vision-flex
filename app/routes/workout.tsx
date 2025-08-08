@@ -11,6 +11,7 @@ import { useAnimationLoop } from '~/hooks/useAnimationLoop';
 import { getExerciseById } from '~/constants/exercises';
 import { drawPose, resizeCanvas } from '~/utils/canvasUtils';
 import type { WorkoutSession } from '~/types/exercise';
+import { useTextToSpeech } from '~/hooks/useTextToSpeech';
 
 export function meta({ params }: Route.MetaArgs) {
   const exercise = getExerciseById(params.exercise);
@@ -36,7 +37,7 @@ export default function Workout({ params }: Route.ComponentProps) {
     hasPermission,
     requestPermission,
     stopStream,
-    ensureStream, // Add the new function
+    ensureStream,
   } = useWebcam();
 
   const {
@@ -45,6 +46,11 @@ export default function Workout({ params }: Route.ComponentProps) {
     detectPose,
     loadModel,
   } = usePoseDetection();
+
+  const { speak, isSpeaking, voices } = useTextToSpeech();
+
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
 
   const { repState, processFrame, resetCounter, getFormFeedback } =
     useRepCounting(exercise!);
@@ -153,6 +159,10 @@ export default function Workout({ params }: Route.ComponentProps) {
   const startTimeRef = useRef<Date | null>(null);
   const canvasResizedRef = useRef<boolean>(false);
 
+  // Add refs to track previous rep count and feedback to avoid re-announcing
+  const prevRepCountRef = useRef(repState.repCount);
+  const prevFeedbackRef = useRef<string | null>(null);
+
   // Add this near the top of your component
   const [disableStreamCleanup, setDisableStreamCleanup] =
     useState(false);
@@ -241,6 +251,46 @@ export default function Workout({ params }: Route.ComponentProps) {
   useEffect(() => {
     canvasResizedRef.current = false;
   }, [stream]);
+
+  // useEffect for text-to-speech feedback
+  useEffect(() => {
+    if (!isWorkoutActive || !isAudioEnabled) return;
+
+    // Announce a new repetition when the count increases
+    if (repState.repCount > prevRepCountRef.current) {
+      // Only pass parameters supported by the hook
+      speak({ text: `${repState.repCount}` });
+    }
+    prevRepCountRef.current = repState.repCount;
+
+    // Announce new form feedback
+    const currentFeedback = getFormFeedback();
+    if (
+      currentFeedback &&
+      currentFeedback !== prevFeedbackRef.current
+    ) {
+      // Use a small delay to avoid clashing with the rep count announcement
+      setTimeout(() => {
+        speak({ text: currentFeedback, rate: 1 });
+      }, 300);
+    }
+    prevFeedbackRef.current = currentFeedback;
+  }, [
+    repState.repCount,
+    getFormFeedback,
+    isWorkoutActive,
+    isAudioEnabled,
+    speak,
+    selectedVoiceName,
+    voices,
+  ]);
+
+  // Make sure to reset the refs when the counter is reset
+  const resetWorkoutState = () => {
+    resetCounter();
+    prevRepCountRef.current = 0;
+    prevFeedbackRef.current = null;
+  };
   const startWorkout = async () => {
     // Temporarily disable stream cleanup to prevent issues
     setDisableStreamCleanup(true);
@@ -281,8 +331,8 @@ export default function Workout({ params }: Route.ComponentProps) {
         }
       }
 
-      // Reset the rep counter for new workout
-      resetCounter();
+      // Reset the rep counter and speech tracking refs for new workout
+      resetWorkoutState();
 
       // Start the animation loop with pose detection
       startLoop(processPoseData);
@@ -503,6 +553,68 @@ export default function Workout({ params }: Route.ComponentProps) {
         {/* Control Panel */}
         <div className="lg:w-80 bg-gray-800 text-white flex flex-col max-h-[calc(100vh-80px)] overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6">
+            {/* Audio Settings */}
+            <div className="bg-gray-700 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-semibold mb-3">
+                Audio Feedback
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="audio-toggle"
+                    className="text-sm text-gray-300"
+                  >
+                    Enable Audio
+                  </label>
+                  <button
+                    id="audio-toggle"
+                    onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      isAudioEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isAudioEnabled
+                          ? 'translate-x-6'
+                          : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                {isAudioEnabled && (
+                  <div>
+                    <label
+                      htmlFor="voice-select"
+                      className="text-sm text-gray-300 block mb-1"
+                    >
+                      Voice
+                    </label>
+                    <select
+                      id="voice-select"
+                      value={selectedVoiceName}
+                      onChange={(e) =>
+                        setSelectedVoiceName(e.target.value)
+                      }
+                      className="w-full bg-gray-600 border border-gray-500 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isSpeaking}
+                    >
+                      <option value="">Default</option>
+                      {voices
+                        .filter((voice) =>
+                          voice.lang.startsWith('en'),
+                        ) // Filter for English voices
+                        .map((voice) => (
+                          <option key={voice.name} value={voice.name}>
+                            {voice.name} ({voice.lang})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Stats */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-gray-700 rounded-lg p-4 text-center">
