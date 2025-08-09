@@ -4,21 +4,16 @@ A browser-based AI-powered personal trainer that uses your webcam to track movem
 
 ## 🚀 Features
 
-### Current Implementation (Phase 1 - UI Complete)
-
-- **Exercise Selection**: Choose from Squats, Bicep Curls, and Push-ups
-- **Responsive Design**: Works on desktop and mobile devices
-- **Camera Permission Handling**: Smooth user experience for webcam access
-- **Workout Timer**: Track your workout duration
-- **Exercise Instructions**: Built-in guidance for proper form
-- **Workout Summary**: View your performance after each session
-
-### Upcoming Features (Phase 2 - AI Integration)
-
-- **Real-time Pose Detection**: Using TensorFlow.js and MoveNet
-- **Automatic Rep Counting**: AI-powered repetition counting
-- **Form Feedback**: Real-time guidance for proper exercise form
-- **Pose Visualization**: Skeleton overlay on video feed
+- **Real-time Pose Detection**: Advanced AI-powered movement tracking using TensorFlow.js and MoveNet
+- **Automatic Rep Counting**: Intelligent repetition counting with high accuracy
+- **Form Feedback**: Instant guidance and corrections for proper exercise technique
+- **Exercise Variety**: Support for Squats and Bicep Curls with more exercises coming
+- **Pose Visualization**: Live skeleton overlay on video feed for better form awareness
+- **Workout Timer**: Track your workout duration and session progress
+- **Responsive Design**: Seamless experience across desktop and mobile devices
+- **Camera Integration**: Optimized webcam processing with smooth permission handling
+- **Workout Summary**: Comprehensive performance analytics after each session
+- **Exercise Instructions**: Built-in guidance and tips for proper form execution
 
 ## 🛠️ Tech Stack
 
@@ -89,12 +84,6 @@ app/
 - **Target Muscles**: Biceps, Forearms
 - **Difficulty**: Beginner
 - **Detection Method**: Elbow angle calculation
-
-### Push-ups
-
-- **Target Muscles**: Chest, Shoulders, Triceps, Core
-- **Difficulty**: Intermediate
-- **Detection Method**: Shoulder and elbow alignment
 
 ## 🧠 AI Implementation (Ready for Phase 2)
 
